@@ -1,0 +1,6 @@
+{
+    "dataset": {
+        "raw": "data/raw",
+        "grained": "data/grained"
+    }
+}
