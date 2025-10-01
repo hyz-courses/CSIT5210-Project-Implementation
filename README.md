@@ -5,7 +5,7 @@
 ### Week 1-2: (Oct. 1 - Oct. 4) Preprocess
 
 - [x] Environment Setup (See the other repo)
-- [ ] Download MovieLens and Amazon Dataset
+- [ ] Download Amazon Dataset
 - [ ] Pre-process Dataset with SR protocol
     - Keep each user's interaction sequence (with clipping)
     - Divide train/validation/test sets
@@ -48,3 +48,15 @@
 
 ---
 
+## Citations
+
+Amazon Reviews 2023
+
+```bibtex
+@article{hou2024bridging,
+  title={Bridging Language and Items for Retrieval and Recommendation},
+  author={Hou, Yupeng and Li, Jiacheng and He, Zhankui and Yan, An and Chen, Xiusi and McAuley, Julian},
+  journal={arXiv preprint arXiv:2403.03952},
+  year={2024}
+}
+```
