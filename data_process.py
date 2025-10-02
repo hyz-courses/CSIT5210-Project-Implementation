@@ -1,12 +1,10 @@
 import os
 import json
-from pathlib import Path
-from typing import List, DefaultDict, Callable, Optional, TypeVar, Generic
+from typing import List, Callable, TypeVar, Generic, Tuple
 from abc import ABC, abstractmethod
 
 # Data processing
 import pandas as pd
-import csv
 
 from tqdm import tqdm
 from loguru import logger
@@ -20,6 +18,10 @@ Data Processing Infrastructures
 """
 
 class CategoryLoader(ABC, Generic[T]):
+    """
+    Loads dataset from a specific category.
+    """
+    
     def __init__(self, category: str, ext: str, content: str):
         self.ext = ext
         self.category = category
@@ -57,13 +59,17 @@ class CategoryLoader(ABC, Generic[T]):
 
 
 class JsonlLoader(CategoryLoader[List[dict]]):
+    """
+    Loads raw dataset in .jsonl format from a 
+    specific category.
+    """
     def __init__(self, category: str, content: str = ""):
         super().__init__(
             category=category, 
             ext="jsonl", 
             content=content)
     
-    def _load(self, file_path, func: Optional[Callable]) -> List[dict]:
+    def _load(self, file_path, func: Callable=lambda x: x) -> List[dict]:
         dict_lines = []
         with open(file_path, "r") as file_lines:
             for i, line in tqdm(enumerate(file_lines)):
@@ -73,13 +79,17 @@ class JsonlLoader(CategoryLoader[List[dict]]):
 
 
 class CSVLoader(CategoryLoader[pd.DataFrame]):
+    """
+    Loads raw dataset in .csv format from a 
+    specific category.
+    """
     def __init__(self, category: str, content: str = ""):
         super().__init__(
             category=category, 
             ext="csv", 
             content=content)
     
-    def _load(self, file_path, func: Optional[Callable]) -> pd.DataFrame:
+    def _load(self, file_path, func: Callable=lambda x: x) -> pd.DataFrame:
         df = pd.read_csv(file_path, sep=",")
         return df
 
@@ -119,18 +129,31 @@ def load_raw_data(category: str):
 
     return df_user_interact, parentasin_title_map, title_itemid_map
 
-# def global_scan():
-#     for category in os.listdir('data/raw'):   ``
-#         file = os.path.join('data/raw', category, f'{category}.csv')
-#         df = pd.read_csv(file, sep=',')
-#         num_unique = len(df['parent_asin'].unique())
-#         print(f"{category} - {num_unique}")
-
 
 def get_5core_ui_list(
         df_user_interact: pd.DataFrame, 
         parentasin_title_map: pd.DataFrame,
-        title_itemid_map: dict) -> pd.DataFrame:
+        title_itemid_map: dict) -> Tuple[
+            pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """
+    Using the raw dataset, build up a list of leave-one-out
+    user interactions. The items are represented by:
+        - parent_asin: The parent asin of the item.
+        - item_title: The title of the item (further used).
+        - item_id: The item ID.
+    Parameters:
+        df_user_interact (pd.DataFrame): 
+            A list of user interactions:
+            Which user interacted with which
+            item at which time.
+        parentasin_title_map (List[dict]): 
+            A map from parent asin to title.
+        title_itemid_map (dict): 
+            A map from title to item ID.
+    Returns:
+        train_list (List[dict]): 
+            A list of training records.
+    """
     
     # Sort the list by user_id, then by timestamp
     # To build up leave-one-out dataset
@@ -222,32 +245,53 @@ def build_asin_itemid_map(ui_df: pd.DataFrame):
     return asin_to_itemid
 
 
-# def grain_user_interaction_list(
-#         ui_df: pd.DataFrame, 
-#         asin_to_itemid: dict):
-#     ui_df["item_id"] = ui_df["parent_asin"].map(asin_to_itemid)
-#     ui_df = ui_df.sort_values(["user_id", "timestamp"])
+def grain_dataset(categories: List[str]):
+    """
+    Grain a list of given categories in the dataset.
+    Parameters:
+        categories (List[str]): 
+            A list of categories to be grained.
+    """
 
-#     user_itemlist = ui_df.groupby("user_id")["item_id"]
+    logger.info('[CSIT5210 Info]: \n\nGraining dataset started!\n\n')
+
+    for category in categories:
+
+        logger.info(
+            f'[CSIT5210 Info]: \n\nGraining category {category} dataset...\n\n')
+        base_path = f'data/grained/{category}'
+
+        if not os.path.exists(base_path):
+            logger.info(
+                f'[CSIT5210 Info]: Base path {base_path} does not exist. '
+                f'Creating...')
+            os.makedirs(base_path)
+
+        logger.info(
+            f'[CSIT5210 Info]: \n\nLoading {category} raw 5-core data...\n\n')
+        df_ui, pa_title_map, title_id_map = load_raw_data(category=category)
+
+        logger.info(
+            f'[CSIT5210 Info]: \n\nGraining {category} data...\n\n')
+        df_train, df_valid, df_test = get_5core_ui_list(
+            df_user_interact=df_ui, 
+            parentasin_title_map=pa_title_map, 
+            title_itemid_map=title_id_map)
+
+        logger.info(
+            f'[CSIT5210 Info]: \n\nSaving {category} train, '
+            f'valid and test .csv files...\n\n')
+        
+        df_train.to_csv(os.path.join(base_path, f'train_{category}.csv'), index=False)
+        df_valid.to_csv(os.path.join(base_path, f'valid_{category}.csv'), index=False)
+        df_test.to_csv(os.path.join(base_path, f'test_{category}.csv'), index=False)
 
 
 if __name__ == "__main__":
-    # global_scan()
-
-    df_ui, parentasin_title_map, title_id_map = load_raw_data(category='Video_Games')
-
-    df_train, df_valid, df_test = get_5core_ui_list(
-        df_ui, parentasin_title_map, title_id_map)
-
-    df_train.to_csv('data/grained/Video_Games/train_Video_Games.csv', index=False)
-    df_valid.to_csv('data/grained/Video_Games/valid_Video_Games.csv', index=False)
-    df_test.to_csv('data/grained/Video_Games/test_Video_Games.csv', index=False)
-
-    
-    # reviews, metas = load_raw_data(category="Video_Games")
-
-    # df = get_pruned_user_interaction_list(reviews)
-    # map = build_asin_itemid_map(df)
-
-    # for k, v in map.items():
-    #     print(f"{k} {v}")
+    grain_dataset(categories=[
+        'Arts_Crafts_and_Sewing',
+        'Baby_Products',
+        'Movies_and_TV',
+        'Sports_and_Outdoors',
+        'Video_Games'
+    ])
