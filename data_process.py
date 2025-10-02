@@ -1,7 +1,8 @@
 import os
 import json
 from pathlib import Path
-from typing import List, DefaultDict, Callable
+from typing import List, DefaultDict, Callable, Optional, TypeVar, Generic
+from abc import ABC, abstractmethod
 
 # Data processing
 import pandas as pd
@@ -11,67 +12,76 @@ from tqdm import tqdm
 from loguru import logger
 
 
-
 logger.add("logs/data_process.log", rotation="10 MB")
+T = TypeVar('T')
 
 """
 Data Processing Infrastructures
 """
 
-def load_jsonl_lines(
-        func: Callable, 
-        jsonl_file: str, 
-        clip: int = -1) -> List[dict]:
-    """
-    Load a .jsonl file into a line of dictionaries.
-    Parameters:
-        func (callable): Processing lambda function for each record.
-        jsonl_file (str): The path to the jsonl file.
-        clip (int): The number of lines to be loaded.
-                    Default, load all. For testing, just load a few samples. 
-                    If it is set negative, then load all.
-    Returns:
-        List[dict]: A list of dictionaries.
-    """
+class CategoryLoader(ABC, Generic[T]):
+    def __init__(self, category: str, ext: str, content: str):
+        self.ext = ext
+        self.category = category
+        self.content = content
 
-    if not jsonl_file.endswith(".jsonl"):
-        message = (f"[CSIT5210 Err]: The file path you inputted" 
-                    " is not a valid jsonl file.")
-        logger.error(message)
-        raise ValueError(message)
-
-    if not os.path.exists(jsonl_file):
-        message = (f"[CSIT5210 Err]: The file"
-                   f" {jsonl_file} does not exist.")
-
-        logger.error(message)
-        raise FileNotFoundError(message)
+    @abstractmethod
+    def _load(self, file_path, func: Callable = lambda x: x) -> T:
+        pass
     
-    logger.info(
-        f"[CSIT5210 Info]: Start loading jsonl file" 
-        f" {Path(jsonl_file).stem}.jsonl.")
+    def __call__(self, func: Callable = lambda x: x) -> T:
 
-    dict_lines = []
-    with open(jsonl_file, "r") as file_lines:
-        for i, line in tqdm(enumerate(file_lines)):
-            dict_lines.append(func(json.loads(line)))
-            if clip > 0 and i >= clip:
-                break
-        file_lines.close()
-    return dict_lines
+        file_name = f"{self.category}.{self.ext}"
+
+        if self.content != '':
+            file_name = f"{self.content}_{file_name}"
+        
+        file_path = os.path.join(
+            "data", "raw", self.category, file_name)
+
+        if not file_path.endswith(f".{self.ext}"):
+            message = (
+                f"[CSIT5210 Err]: The file path you inputted " 
+                f"is not a valid .{self.ext} file. ({file_path})")
+            logger.error(message)
+            raise ValueError(message)
+        
+        if not os.path.exists(file_path):
+            message = (
+                f"[CSIT5210 Err]: The file"
+                f" {file_path} does not exist.")
+            logger.error(message)
+            raise FileNotFoundError(message)
+    
+        return self._load(file_path, func)
 
 
-def extend_csv_file(dict_list: List[dict], category: str):
-    with open(f"data/grained/{category}/{category}_userint.csv") as csv_file:
-        field_names = dict_list[0].keys()
-        writer = csv.DictWriter(csv_file, fieldnames=field_names)
-        writer.writeheader()
-        for row in dict_list:
-            for key, value in row.items():
-                write_value = value
-                if isinstance(value, list):
-                    write_value = str(write_value)
-                writer.writerow({key: write_value})
+class JsonlLoader(CategoryLoader[List[dict]]):
+    def __init__(self, category: str, content: str = ""):
+        super().__init__(
+            category=category, 
+            ext="jsonl", 
+            content=content)
+    
+    def _load(self, file_path, func: Optional[Callable]) -> List[dict]:
+        dict_lines = []
+        with open(file_path, "r") as file_lines:
+            for i, line in tqdm(enumerate(file_lines)):
+                dict_lines.append(func(json.loads(line)))
+            file_lines.close()
+        return dict_lines
+
+
+class CSVLoader(CategoryLoader[pd.DataFrame]):
+    def __init__(self, category: str, content: str = ""):
+        super().__init__(
+            category=category, 
+            ext="csv", 
+            content=content)
+    
+    def _load(self, file_path, func: Optional[Callable]) -> pd.DataFrame:
+        df = pd.read_csv(file_path, sep=",")
+        return df
 
 """
 Data Graining
@@ -86,90 +96,111 @@ def load_raw_data(category: str):
             The category of the dataset.
             E.g., "Video_Games", "Books", etc.
     Returns:
-        review_list (List[dict]): 
-            A list of purified review records.
-        meta_list (List[dict]): 
-            A list of purified meta records.
+        df_user_interact (np.DataFrame): 
+            A list of user interactions:
+            Which user interacted with which
+            item at which time.
+        parentasin_title_map (List[dict]): 
+            A map from parent asin to title.
     """
-
-    base_path = "data/raw"
-    review_file, meta_file = f"{category}.jsonl", f"meta_{category}.jsonl"
-
-    meta_list = load_jsonl_lines(
-        func=lambda record: {
-            "parent_asin": record["parent_asin"], 
-            "title": record["title"]}, 
-        jsonl_file=os.path.join(base_path, category, meta_file))
+    _parentasin_title_map = JsonlLoader(category=category, content='meta')(
+        func=lambda record:{
+        "parent_asin": record["parent_asin"], 
+        "title": record["title"]})
     
-    review_list = load_jsonl_lines(
-        func=lambda record: {
-            "timestamp": record["timestamp"],
-            "user_id": record["user_id"], 
-            "asin": record["asin"],
-            "parent_asin": record["parent_asin"]}, 
-        jsonl_file=os.path.join(base_path, category, review_file))
+    parentasin_title_map = {
+        record['parent_asin']: record['title'] 
+        for record in _parentasin_title_map}
+    
+    title_itemid_map = {
+        title: i for i, title in enumerate(parentasin_title_map.values())}
+    
+    df_user_interact = CSVLoader(category=category, content='')()
 
-    return review_list, meta_list
+    return df_user_interact, parentasin_title_map, title_itemid_map
+
+# def global_scan():
+#     for category in os.listdir('data/raw'):   ``
+#         file = os.path.join('data/raw', category, f'{category}.csv')
+#         df = pd.read_csv(file, sep=',')
+#         num_unique = len(df['parent_asin'].unique())
+#         print(f"{category} - {num_unique}")
 
 
-def get_pruned_user_interaction_list(reviews: List[dict]):
-    """
-    Get pruned list of user interactions, including:
-        - user_id: Which user
-        - timestamp: When the interaction happened
-        - parent_asin: Which item
-    Iteratively prune the list using 5-core.
+def get_5core_ui_list(
+        df_user_interact: pd.DataFrame, 
+        parentasin_title_map: pd.DataFrame,
+        title_itemid_map: dict) -> pd.DataFrame:
+    
+    # Sort the list by user_id, then by timestamp
+    # To build up leave-one-out dataset
+    df_user_interact.sort_values(['user_id', 'timestamp'])
+
+    # Search item title from paren_asin
+    df_user_interact['item_title'] = df_user_interact['parent_asin'].map(parentasin_title_map)
+
+    # Use sequencial item ID over strings
+    df_user_interact['item_id'] = df_user_interact['item_title'].map(title_itemid_map)
+
+    # List out key columns of each user
+    key_concerns = ['parent_asin', 'timestamp', 'item_title', 'item_id']
+
+    # Group users to list the above columns
+    user_group = df_user_interact.groupby('user_id')
+    user_data = user_group.agg({
+        key_concern: list 
+        for key_concern in key_concerns
+    }).to_dict('index')
+
+    train_list: List[dict] = []
+    valid_list: List[dict] = []
+    test_list: List[dict] = []
+    for user_id, interaction in user_data.items():
+
+        (parentasin_list,
+         timestamp_list,
+         itemtitle_list,
+         itemid_list) = [
+             interaction[key_concern] 
+             for key_concern in key_concerns]
         
-    Parameters:
-        reviews (List[dict]): 
-            A list of review records.
-    Returns:
-        List[dict]: 
-            A list of pruned user interaction records.
-    """
+        interaction_length = len(parentasin_list)
 
-    # which user interacted which item at which time
-    records = [{
-        "user_id": review["user_id"],
-        "timestamp": review["timestamp"],
-        "parent_asin": review["parent_asin"],
-        } for review in reviews]
+        for ptr_seq_end in range(1, interaction_length):
+            new_record = {
+                'user_id': user_id,
+                'history_item_asins': parentasin_list[:ptr_seq_end][-10:],
+                'new_item_asin': parentasin_list[ptr_seq_end],
+                'history_item_titles': itemtitle_list[:ptr_seq_end][-10:],
+                'new_item_title': itemtitle_list[ptr_seq_end],
+                'history_item_ids': itemid_list[:ptr_seq_end][-10:],
+                'new_item_id': itemid_list[ptr_seq_end],
+                'new_item_timestamp': timestamp_list[ptr_seq_end]
+            }
 
-    df = pd.DataFrame(records)
+            # Mostly, new records are given to training set.
+            # For the last two records for each user, it will be given 
+            # to the validation set and test set respectively.
 
-    logger.info(
-        f"[CSIT5210 Info]: Before filtering, \n\n"
-        f"{len(df)} interactions, " 
-        f"{df['user_id'].nunique()} distinct users, "
-        f"{df['parent_asin'].nunique()} distinct items.\n\n")
-
-    while True:
-        user_counts = df["user_id"].value_counts()
-        item_counts = df["parent_asin"].value_counts()
-
-        # Remove users with less than 5 interactions
-        valid_users = user_counts[user_counts >= 5].index
-
-        # Remove items with less than 5 interactions
-        valid_items = item_counts[item_counts >= 5].index
-
-        df_new = df[
-            df["user_id"].isin(valid_users) &
-            df["parent_asin"].isin(valid_items)].copy()
-        
-        if len(df_new) == len(df):
-            break
-
-        df = df_new
+            if ptr_seq_end < interaction_length - 2:
+                train_list.append(new_record)
+            elif ptr_seq_end == interaction_length - 2:
+                valid_list.append(new_record)
+            elif ptr_seq_end == interaction_length -1:
+                test_list.append(new_record)
+            else:
+                message = (f"[CSIT5210 Error]: "
+                           f"Failed to construct leave-one-out dataset."
+                           f"Invalid pointer value {ptr_seq_end}.")
+                logger.error(message)
+                raise ValueError(message)
     
-    logger.info(
-        f"[CSIT5210 Info]: After filtering, \n\n"
-        f"{len(df)} interactions, " 
-        f"{df['user_id'].nunique()} distinct users, "
-        f"{df['parent_asin'].nunique()} distinct items.\n\n")
+    df_train = pd.DataFrame(train_list)
+    df_valid = pd.DataFrame(valid_list)
+    df_test = pd.DataFrame(test_list)
     
-    return df
-
+    return df_train, df_valid, df_test
+    
 
 def build_asin_itemid_map(ui_df: pd.DataFrame):
     """
@@ -201,10 +232,22 @@ def build_asin_itemid_map(ui_df: pd.DataFrame):
 
 
 if __name__ == "__main__":
-    reviews, metas = load_raw_data(category="Video_Games")
+    # global_scan()
 
-    df = get_pruned_user_interaction_list(reviews)
-    map = build_asin_itemid_map(df)
+    df_ui, parentasin_title_map, title_id_map = load_raw_data(category='Video_Games')
 
-    for k, v in map.items():
-        print(f"{k} {v}")
+    df_train, df_valid, df_test = get_5core_ui_list(
+        df_ui, parentasin_title_map, title_id_map)
+
+    df_train.to_csv('data/grained/Video_Games/train_Video_Games.csv', index=False)
+    df_valid.to_csv('data/grained/Video_Games/valid_Video_Games.csv', index=False)
+    df_test.to_csv('data/grained/Video_Games/test_Video_Games.csv', index=False)
+
+    
+    # reviews, metas = load_raw_data(category="Video_Games")
+
+    # df = get_pruned_user_interaction_list(reviews)
+    # map = build_asin_itemid_map(df)
+
+    # for k, v in map.items():
+    #     print(f"{k} {v}")
