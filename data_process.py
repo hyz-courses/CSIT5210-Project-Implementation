@@ -2,6 +2,7 @@ import os
 import json
 from typing import List, Callable, TypeVar, Generic, Tuple
 from abc import ABC, abstractmethod
+from datasets import Dataset, DatasetDict
 
 # Data processing
 import pandas as pd
@@ -131,8 +132,8 @@ def load_raw_data(category: str):
 
 
 def get_5core_ui_list(
-        df_user_interact: pd.DataFrame, 
-        parentasin_title_map: pd.DataFrame,
+        df_user_interact: pd.DataFrame,
+        parentasin_title_map: dict,
         title_itemid_map: dict) -> Tuple[
             pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
@@ -287,11 +288,39 @@ def grain_dataset(categories: List[str]):
         df_test.to_csv(os.path.join(base_path, f'test_{category}.csv'), index=False)
 
 
+def upload_dataset(categories: List[str]):
+
+    
+    for category in categories:
+        base_path = f'data/grained/{category}'
+
+        df_train = pd.read_csv(os.path.join(base_path, f'train_{category}.csv'))
+        df_valid = pd.read_csv(os.path.join(base_path, f'valid_{category}.csv'))
+        df_test= pd.read_csv(os.path.join(base_path, f'test_{category}.csv'))
+
+        (train_dataset,
+         valid_dataset,
+         test_dataset) = [
+             Dataset.from_pandas(df) 
+             for df in [df_train, df_valid, df_test]]
+
+        dataset_dict = DatasetDict({
+            'train': train_dataset,
+            'validation': valid_dataset,
+            'test': test_dataset
+        })
+
+        dataset_dict.push_to_hub(f'YzHuangYanzhen/Amazon-Reviews-2023-SR-L1O-{category}')
+
+
 if __name__ == "__main__":
-    grain_dataset(categories=[
+
+    categories = [
         'Arts_Crafts_and_Sewing',
         'Baby_Products',
         'Movies_and_TV',
         'Sports_and_Outdoors',
-        'Video_Games'
-    ])
+        'Video_Games']
+
+    # grain_dataset(categories=categories)
+    upload_dataset(categories=categories)
