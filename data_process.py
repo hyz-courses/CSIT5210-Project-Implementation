@@ -1,6 +1,5 @@
-import os
-import json
-from typing import List, Callable, TypeVar, Generic, Tuple
+import os, json, math
+from typing import List, Callable, TypeVar, Generic, Tuple, Optional
 from abc import ABC, abstractmethod
 from datasets import Dataset, DatasetDict
 
@@ -23,10 +22,20 @@ class CategoryLoader(ABC, Generic[T]):
     Loads dataset from a specific category.
     """
     
-    def __init__(self, category: str, ext: str, content: str):
+    def __init__(self, category: str, ext: str, phase: str, usage: str, limit: Optional[int] = None):
         self.ext = ext
         self.category = category
-        self.content = content
+        self.type = usage
+        self.phase = phase
+        self.type = usage
+        self.limit = limit
+
+        if limit and limit < 0:
+            message = (
+                f"[CSIT5210 Err]: The limit you inputted " 
+                f"is invalid. ({limit})")
+            logger.error(message)
+            raise ValueError(message)
 
     @abstractmethod
     def _load(self, file_path, func: Callable = lambda x: x) -> T:
@@ -36,11 +45,11 @@ class CategoryLoader(ABC, Generic[T]):
 
         file_name = f"{self.category}.{self.ext}"
 
-        if self.content != '':
-            file_name = f"{self.content}_{file_name}"
+        if self.type != '':
+            file_name = f"{self.type}_{file_name}"
         
         file_path = os.path.join(
-            "data", "raw", self.category, file_name)
+            "data", self.phase, self.category, file_name)
 
         if not file_path.endswith(f".{self.ext}"):
             message = (
@@ -64,17 +73,26 @@ class JsonlLoader(CategoryLoader[List[dict]]):
     Loads raw dataset in .jsonl format from a 
     specific category.
     """
-    def __init__(self, category: str, content: str = ""):
+    def __init__(self, 
+                 category: str, phase: str, 
+                 usage: str = "", 
+                 limit: Optional[int] = None):
         super().__init__(
             category=category, 
             ext="jsonl", 
-            content=content)
+            phase=phase,
+            usage=usage,
+            limit=limit)
     
     def _load(self, file_path, func: Callable=lambda x: x) -> List[dict]:
         dict_lines = []
-        with open(file_path, "r") as file_lines:
+        with open(file_path, "r", encoding='utf-8') as file_lines:
             for i, line in tqdm(enumerate(file_lines)):
                 dict_lines.append(func(json.loads(line)))
+                if self.limit and i >= self.limit:
+                    logger.warning(
+                        f'Over dataset size limit {self.limit}, stop loading more.')
+                    break
             file_lines.close()
         return dict_lines
 
@@ -84,19 +102,24 @@ class CSVLoader(CategoryLoader[pd.DataFrame]):
     Loads raw dataset in .csv format from a 
     specific category.
     """
-    def __init__(self, category: str, content: str = ""):
+    def __init__(self, 
+                 category: str, phase: str, 
+                 usage: str = "", 
+                 limit: Optional[int] = None):
         super().__init__(
             category=category, 
-            ext="csv", 
-            content=content)
+            ext="csv",
+            phase=phase, 
+            usage=usage,
+            limit=limit)
     
-    def _load(self, file_path, func: Callable=lambda x: x) -> pd.DataFrame:
-        df = pd.read_csv(file_path, sep=",")
+    def _load(self, 
+              file_path, 
+              func: Callable=lambda x: x) -> pd.DataFrame:
+        df = pd.read_csv(
+            file_path, sep=",", 
+            encoding='utf-8', nrows=self.limit if self.limit else None)
         return df
-
-"""
-Data Graining
-"""
 
 
 def load_raw_data(category: str):
@@ -114,19 +137,25 @@ def load_raw_data(category: str):
         parentasin_title_map (List[dict]): 
             A map from parent asin to title.
     """
-    _parentasin_title_map = JsonlLoader(category=category, content='meta')(
+    _parentasin_title_map = JsonlLoader(
+        category=category, phase='raw',
+        usage='meta')(
         func=lambda record:{
         "parent_asin": record["parent_asin"], 
         "title": record["title"]})
-    
+
     parentasin_title_map = {
-        record['parent_asin']: record['title'] 
+        record['parent_asin']: record['title']
         for record in _parentasin_title_map}
-    
+
     title_itemid_map = {
         title: i for i, title in enumerate(parentasin_title_map.values())}
-    
-    df_user_interact = CSVLoader(category=category, content='')()
+
+    df_user_interact = CSVLoader(
+        category=category, 
+        phase='raw', 
+        usage='', 
+        limit=200000)()
 
     return df_user_interact, parentasin_title_map, title_itemid_map
 
@@ -224,26 +253,6 @@ def get_5core_ui_list(
     df_test = pd.DataFrame(test_list)
     
     return df_train, df_valid, df_test
-    
-
-def build_asin_itemid_map(ui_df: pd.DataFrame):
-    """
-    Obtaining a pruned user interaction list,
-    assign each item parent_asin a unique
-    numerical item id, and organize a hashmap.
-
-    Parameters:
-        ui_df (pd.DataFrame): 
-            A dataframe of user interactions.
-    Returns:
-        asin_to_itemid (dict): 
-            A dictionary mapping parent_asin to item_id.
-    """
-    
-    unique_asins = sorted(ui_df['parent_asin'].unique())
-    asin_to_itemid = {asin: i for i, asin in enumerate(unique_asins)}
-
-    return asin_to_itemid
 
 
 def grain_dataset(categories: List[str]):
@@ -260,13 +269,20 @@ def grain_dataset(categories: List[str]):
 
         logger.info(
             f'[CSIT5210 Info]: \n\nGraining category {category} dataset...\n\n')
+        
         base_path = f'data/grained/{category}'
 
         if not os.path.exists(base_path):
             logger.info(
-                f'[CSIT5210 Info]: Base path {base_path} does not exist. '
-                f'Creating...')
+                f'[CSIT5210 Info]: \n\nBase path {base_path} does not exist. '
+                f'Creating...\n\n')
             os.makedirs(base_path)
+        elif bool(os.listdir(base_path)):
+            logger.info(
+                f'[CSIT5210 Info]: \n\nBase path {base_path} is not empty. '
+                f'Category {category} grained! '
+                f'Skipping...\n\n')
+            continue
 
         logger.info(
             f'[CSIT5210 Info]: \n\nLoading {category} raw 5-core data...\n\n')
@@ -288,8 +304,91 @@ def grain_dataset(categories: List[str]):
         df_test.to_csv(os.path.join(base_path, f'test_{category}.csv'), index=False)
 
 
-def upload_dataset(categories: List[str]):
+def mix_dataset(categories: List[str]):
+    """
+    Mix a list of given categories in the dataset.
+    Parameters:
+        categories (List[str]): 
+            A list of categories to be mixed.
+    """
 
+    logger.info('[CSIT5210 Info]: \n\nMixing Amazon dataset started!\n\n')
+
+    mix_path = 'data/grained/Amazon-Mix'
+    if not os.path.exists(mix_path):
+        logger.info(
+            f'[CSIT5210 Info]: \n\nMix path {mix_path} does not exist. '
+            f'Creating...\n\n')
+        os.makedirs(mix_path)
+
+    all_train = pd.DataFrame()
+    all_valid = pd.DataFrame()
+    all_test = pd.DataFrame()
+
+    for category in categories:
+        logger.info(
+            f'[CSIT5210 Info]: \n\nSampling category {category} dataset...\n\n')
+        
+        dataframe_train = CSVLoader(
+            category=category,
+            phase='grained',
+            usage='train',
+            limit=172747)()
+
+        dataframe_valid = CSVLoader(
+            category=category,
+            phase='grained',
+            usage='valid',
+            limit=172747)()
+        
+        dataframe_test = CSVLoader(
+            category=category,
+            phase='grained',
+            usage='test',
+            limit=172747)()
+        
+        category_length = (len(dataframe_train) +
+                           len(dataframe_valid) +
+                           len(dataframe_test))
+
+        train_size = min(len(dataframe_train), math.floor(category_length * 0.8))
+        valid_size = math.ceil(train_size * 0.125)
+        test_size = math.ceil(train_size * 0.125)
+
+        logger.info(
+            f'[CSIT5210 Info]: \n\nCategory {category}:\n\n'
+            f'train size: {train_size}, valid size: {valid_size} , test size: {test_size}\n\n')
+
+        dataframe_train = dataframe_train.sample(train_size, random_state=114)
+        dataframe_valid = dataframe_train.sample(valid_size, random_state=114)
+        dataframe_test = dataframe_train.sample(test_size, random_state=114)
+
+        logger.info(
+            f'[CSIT5210 Info]: \n\nAdding {category} to buffer dataframe...\n\n')
+
+        all_train = pd.concat([all_train, dataframe_train])
+        all_valid = pd.concat([all_valid, dataframe_valid])
+        all_test = pd.concat([all_test, dataframe_test])
+
+    logger.info(
+            '[CSIT5210 Info]: \n\nSaving mixed dataset to .csv file...\n\n')
+    
+    all_train.to_csv(os.path.join(mix_path, 'train_Amazon-Mix.csv'), index=False)
+    all_valid.to_csv(os.path.join(mix_path, 'valid_Amazon-Mix.csv'), index=False)
+    all_test.to_csv(os.path.join(mix_path, 'test_Amazon-Mix.csv'), index=False)
+
+    logger.info(
+        '[CSIT5210 Info]: \n\nMixed dataset saved!\n\n'
+        f'Records: train {len(all_train)}, valid {len(all_valid)}, test {len(all_test)}')
+
+
+def upload_dataset(categories: List[str]):
+    """
+    Upload Dataset to HuggingFace Hub.
+    Parameters:
+        categories (List[str]): 
+            A list of categories to be uploaded.
+    """
     
     for category in categories:
         base_path = f'data/grained/{category}'
@@ -315,12 +414,20 @@ def upload_dataset(categories: List[str]):
 
 if __name__ == "__main__":
 
-    categories = [
-        'Arts_Crafts_and_Sewing',
-        'Baby_Products',
+    pretrain_categories = [
+        'Video_Games', 
+        'Arts_Crafts_and_Sewing', 
         'Movies_and_TV',
-        'Sports_and_Outdoors',
-        'Video_Games']
+        'Home_and_Kitchen', 
+        'Electronics',
+        'Tools_and_Home_Improvement']
 
-    # grain_dataset(categories=categories)
-    upload_dataset(categories=categories)
+    outofdomain_categories = [
+        'Baby_Products',
+        'Sports_and_Outdoors']
+
+    grain_dataset(categories=pretrain_categories + outofdomain_categories)
+    mix_dataset(categories=pretrain_categories)
+    # upload_dataset(categories=outofdomain_categories)
+
+    
