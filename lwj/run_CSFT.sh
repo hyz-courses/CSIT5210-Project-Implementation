@@ -2,8 +2,8 @@
 
 base_model_path="/home/$USER/huggingface_data/hub/Qwen2-0.5B"  # Replace with your own model path
 # data path
-train_data_path=$(ls -f /home/wliek/CSIT5210-Project-LLM2Rec/data/AmazonMix-6/5-core/train/${category}*.csv)
-eval_data_path=$(ls -f /home/wliek/CSIT5210-Project-LLM2Rec/data/AmazonMix-6/5-core/valid/${category}*.csv)
+train_data_path=$(ls -f /home/wliek/CSIT5210-Project-LLM2Rec/data/AmazonMix-6/5-core/train/AmazonMix-6*.csv)
+eval_data_path=$(ls -f /home/wliek/CSIT5210-Project-LLM2Rec/data/AmazonMix-6/5-core/valid/AmazonMix-6*.csv)
 echo ${train_data_path} ${eval_data_path}
 
 CUDA_VISIBLE_DEVICES=0 /home/$USER/llm2rec-venv/bin/torchrun --master_port=25649 --nproc_per_node 1 \
