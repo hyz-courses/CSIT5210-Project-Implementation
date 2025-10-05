@@ -1,11 +1,21 @@
 import os
-
-from dataset import PurePromptDataset,dataset
+from dataset import PromptDataset
 from datasets import Dataset as HFDataset
-
+import argparse
 import torch
 import transformers
 from transformers import AutoModelForCausalLM, AutoTokenizer, EarlyStoppingCallback
+def parse_args():
+    parser = argparse.ArgumentParser(description="CSFT Training Script")
+
+    parser.add_argument("--base_model", type=str, required=True, help="预训练模型路径")
+    parser.add_argument("--train_file", type=str, required=True, help="训练数据文件路径")
+    parser.add_argument("--eval_file", type=str, required=True, help="验证数据文件路径")
+    parser.add_argument("--output_dir", type=str, required=True, help="模型输出目录")
+    parser.add_argument("--wandb_run_name", type=str, required=True, help="wandb 跟踪名称")
+
+    return parser.parse_args()
+
 def train(
         #file path:model, data, output
         base_model_path: str = "",
@@ -36,19 +46,19 @@ def train(
 ):
     
     gradient_accumulation_steps = batch_size // micro_batch_size
+    #load LLM mode & tokenizer
     model = AutoModelForCausalLM.from_pretrained(
             base_model_path,
-            
             torch_dtype=torch.bfloat16,
-           
             trust_remote_code=True,
     )
     tokenizer = AutoTokenizer.from_pretrained(base_model_path, trust_remote_code=True)
+    #padding left eos
     tokenizer.pad_token = tokenizer.eos_token
     tokenizer.pad_token_id = tokenizer.eos_token_id
     tokenizer.padding_side = "left"
-
-    train_data = PurePromptDataset(train_file=train_data_path,
+    # load data
+    train_data = PromptDataset(train_file=train_data_path,
                                     tokenizer=tokenizer, 
                                     max_len=cutoff_len,  
                                     sample=-1, 
@@ -56,18 +66,23 @@ def train(
                                     category=category, 
                                     K = K)
    
-    val_data = PurePromptDataset(train_file=eval_data_path, 
+    val_data = PromptDataset(train_file=eval_data_path, 
                                  tokenizer=tokenizer, 
                                  max_len=cutoff_len,  
                                  sample=2000, 
                                  category=category, 
                                  K = K)
     
-    
-    hf_train_dataset = HFDataset.from_dict({k: [v[k] for v in train_data] for k in train_data[0].keys()})
+    # generate huggingface dataset format for training
+    # list[dict1,dict2,...] ->dict{input:[input1,...] output:[output1,...]}
+    hf_train_dataset = HFDataset.from_dict(
+        {k: [v[k] for v in train_data] for k in train_data[0].keys()}
+        )
     hf_train_dataset = hf_train_dataset.shuffle(seed=seed)
-    hf_val_dataset = HFDataset.from_dict({k: [v[k] for v in val_data] for k in val_data[0].keys()})
-
+    hf_val_dataset = HFDataset.from_dict(
+        {k: [v[k] for v in val_data] for k in val_data[0].keys()}
+        )
+    #init trainer
     trainer = transformers.Trainer(
         model=model,
         train_dataset=hf_train_dataset,
@@ -99,14 +114,27 @@ def train(
         data_collator=transformers.DataCollatorForSeq2Seq(
             tokenizer, pad_to_multiple_of=8, return_tensors="pt", padding=True
         ),
-        callbacks = [EarlyStoppingCallback(early_stopping_patience=5)],
-        # optimizers=(optimizer, lr_scheduler) 
+        callbacks = [EarlyStoppingCallback(early_stopping_patience=5)],#
     )
+    #training
     model.config.use_cache = False
     trainer.evaluate()
-    
     trainer.train(resume_from_checkpoint=None)
     model.save_pretrained(output_dir)
+
+
+
 if __name__ == "__main__":
-    # train()
+    os.environ["NCCL_P2P_DISABLE"] = "1"  # 禁用 NVLink
+    os.environ["NCCL_IB_DISABLE"] = "1"   # 禁用 InfiniBand，如果适用
+    os.environ["NCCL_NET_GDR_LEVEL"] = "0"  # 禁用 GDR（GPU 直连）
+    args = parse_args()
+    train(
+        base_model_path= args.base_model,
+        train_data_path = args.train_data_path,
+        eval_data_path= args.eval_data_path,
+        output_dir=args.output_dir,
+        wandb_name  = args.wandb_run_name
+        
+    )
     print(os.environ)

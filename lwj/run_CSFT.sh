@@ -11,8 +11,8 @@ do
     # CUDA_VISIBLE_DEVICES=0,1 torchrun --master_port=25649 --nproc_per_node 2 \
     python    ./csft.py \
         --base_model ${model_path} \
-        --train_file ${train_file} \
-        --eval_file ${eval_file} \
+        --train_data_path ${train_file} \
+        --eval_data_path ${eval_file} \
         --output_dir ./output/Qwen2-0.5B-CSFT-${category} \
         --wandb_run_name Qwen2-0.5B-CSFT-${category} \
         # --category ${category} \
