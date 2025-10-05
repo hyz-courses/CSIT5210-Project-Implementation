@@ -38,7 +38,6 @@ def train(
         group_by_length: bool = False,  # faster, but produces an odd training loss curve
 
         #wandb setting
-        # wandb_project: str = "",
         wandb_name: str = "Qwen2-0.5B-CSFT-AmazonMix-6",
         #others
         category = "items",
