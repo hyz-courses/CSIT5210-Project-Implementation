@@ -1,7 +1,11 @@
 import os
+os.environ["NCCL_P2P_DISABLE"] = "1"  # 禁用 NVLink
+os.environ["NCCL_IB_DISABLE"] = "1"   # 禁用 InfiniBand，如果适用
+os.environ["NCCL_NET_GDR_LEVEL"] = "0"  # 禁用 GDR（GPU 直连）
 from dataset import PromptDataset
 from datasets import Dataset as HFDataset
 import argparse
+import fire
 import torch
 import transformers
 from transformers import AutoModelForCausalLM, AutoTokenizer, EarlyStoppingCallback
@@ -9,8 +13,8 @@ def parse_args():
     parser = argparse.ArgumentParser(description="CSFT Training Script")
 
     parser.add_argument("--base_model", type=str, required=True, help="预训练模型路径")
-    parser.add_argument("--train_file", type=str, required=True, help="训练数据文件路径")
-    parser.add_argument("--eval_file", type=str, required=True, help="验证数据文件路径")
+    parser.add_argument("--train_data_path", type=str, required=True, help="训练数据文件路径")
+    parser.add_argument("--eval_data_path", type=str, required=True, help="验证数据文件路径")
     parser.add_argument("--output_dir", type=str, required=True, help="模型输出目录")
     parser.add_argument("--wandb_run_name", type=str, required=True, help="wandb 跟踪名称")
 
@@ -38,13 +42,10 @@ def train(
         wandb_name: str = "Qwen2-0.5B-CSFT-AmazonMix-6",
         #others
         category = "items",
-        world_size=1,
         K=0,
         seed: int = 0,
-
-        
 ):
-    
+
     gradient_accumulation_steps = batch_size // micro_batch_size
     #load LLM mode & tokenizer
     model = AutoModelForCausalLM.from_pretrained(
@@ -99,7 +100,7 @@ def train(
             logging_steps=1,
             optim="adamw_torch",
             max_steps=10000,
-            evaluation_strategy="steps",       # Changed from "epoch" to "steps"
+            eval_strategy="steps",       # Changed from "epoch" to "steps"
             eval_steps=2000,                   # Evaluate every 1000 steps
             save_strategy="steps",             # Changed from "epoch" to "steps"
             save_steps=2000,                   # Save checkpoint every 1000 steps
@@ -107,7 +108,7 @@ def train(
             output_dir=output_dir,
             save_total_limit=5,
             load_best_model_at_end=True,
-            ddp_find_unused_parameters=False if ddp else None,
+            ddp_find_unused_parameters=None ,
             group_by_length=group_by_length,
             report_to="wandb",
         ),
@@ -120,21 +121,20 @@ def train(
     model.config.use_cache = False
     trainer.evaluate()
     trainer.train(resume_from_checkpoint=None)
+    if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
     model.save_pretrained(output_dir)
 
 
 
 if __name__ == "__main__":
-    os.environ["NCCL_P2P_DISABLE"] = "1"  # 禁用 NVLink
-    os.environ["NCCL_IB_DISABLE"] = "1"   # 禁用 InfiniBand，如果适用
-    os.environ["NCCL_NET_GDR_LEVEL"] = "0"  # 禁用 GDR（GPU 直连）
+    
     args = parse_args()
+    
     train(
         base_model_path= args.base_model,
         train_data_path = args.train_data_path,
         eval_data_path= args.eval_data_path,
         output_dir=args.output_dir,
         wandb_name  = args.wandb_run_name
-        
     )
-    print(os.environ)
