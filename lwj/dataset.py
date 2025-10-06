@@ -1,8 +1,13 @@
-from torch.utils.data import Dataset
-from tqdm import tqdm
-import pandas as pd
+
 import random
 from typing import List
+
+import pandas as pd
+from tqdm import tqdm
+
+from torch.utils.data import Dataset
+
+
 class Tokenizer:
     def __init__(self, tokenizer):
         self.tokenizer = tokenizer
@@ -12,6 +17,7 @@ class Tokenizer:
     def encode(self, s: str, bos: bool, eos: bool) -> List[int]:
         assert type(s) is str
         t = self.tokenizer.encode(s)
+
         while t[0] == self.bos_id:# drop dos
             t = t[1:]
         while t[-1] == self.eos_id:# drop eos 
@@ -82,17 +88,17 @@ class PromptDataset(Dataset):
                 - output (str): 当前目标商品标题（带换行符）
                 - dedup (bool): 当前商品是否与历史最后一个商品重复
         """
-        row['history_item_title'] = eval(row['history_item_title'])# str to list
-        L = len(row['history_item_title']) 
+        row['history_item_titles'] = eval(row['history_item_titles'])# str to list
+        L = len(row['history_item_titles']) 
         history = ""
         for i in range(L):
             if i == 0:
-                history += row['history_item_title'][i]
+                history += row['history_item_titles'][i]
             else:
-                history += ", " + row['history_item_title'][i]
-        target_item = str(row['item_title'])
-        target_item_id = row["item_id"]
-        last_history_item_id = eval(row["history_item_id"])[-1]
+                history += ", " + row['history_item_titles'][i]
+        target_item = str(row['new_item_title'])
+        target_item_id = row["new_item_id"]
+        last_history_item_id = eval(row['history_item_ids'])[-1]
         return {"input": f"{history}",
                 "output": target_item + '\n',
                 "dedup": target_item_id == last_history_item_id}
@@ -101,9 +107,11 @@ class PromptDataset(Dataset):
         history = self.get_history(self.data.iloc[idx])#
         target_item = history['output']
         history['output'] = ''
-        
+
         prompt = self.generate_prompt(history)#history[input]
+
         tokens = self.tokenizer.encode(prompt, bos=False, eos=False)#encode history_item_title to generate a token 
+
         history["input"] = ""
         
         attention_mask = [1] * len(tokens)
