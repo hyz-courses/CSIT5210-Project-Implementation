@@ -208,7 +208,9 @@ def load_raw_data(category: str):
 
 
 def get_5core_ui_list(
-    df_user_interact: pd.DataFrame, parentasin_title_map: dict, title_itemid_map: dict
+    df_user_interact: pd.DataFrame, 
+    parentasin_title_map: dict, 
+    title_itemid_map: dict
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
     Using the raw dataset, build up a list of leave-one-out
@@ -260,9 +262,31 @@ def get_5core_ui_list(
             interaction[key_concern] for key_concern in key_concerns
         ]
 
+        if (len(itemtitle_list) == 0 
+            or itemtitle_list[0] == ''
+            or itemtitle_list[0] == None):
+            logger.warning(
+                    '[CSIT5210 Warning]: \n\nUser\'s interaction list is empty.'
+                    f'\n\n user id: {user_id}, item title list: {itemtitle_list}'
+                    '\n\nSkip this user.\n\n'
+                )
+            continue
+
         interaction_length = len(parentasin_list)
 
         for ptr_seq_end in range(1, interaction_length):
+            new_itemid = itemid_list[ptr_seq_end]
+            new_itemtitle = itemtitle_list[ptr_seq_end]
+
+            if (pd.isna(new_itemid) or new_itemid == None or 
+                pd.isna(new_itemtitle) or new_itemtitle == ''):
+                logger.warning(
+                    '[CSIT5210 Warning]: \n\nMeeting invalid item id/title:'
+                    f'\n\n item id: {new_itemid}, item title: {new_itemtitle}'
+                    '\n\nDrop all following records.\n\n'
+                )
+                break
+
             new_record = {
                 "user_id": user_id,
                 "history_item_asins": parentasin_list[:ptr_seq_end][-10:],
@@ -360,7 +384,7 @@ def mix_dataset(categories: List[str]):
 
     logger.info("[CSIT5210 Info]: \n\nMixing Amazon dataset started!\n\n")
 
-    mix_path = "data/grained/Amazon-Mix"
+    mix_path = "data/grained/AmazonMix"
     if not os.path.exists(mix_path):
         logger.info(
             f"[CSIT5210 Info]: \n\nMix path {mix_path} does not exist. "
@@ -370,7 +394,7 @@ def mix_dataset(categories: List[str]):
     elif bool(os.listdir(mix_path)):
         logger.info(
             f"[CSIT5210 Info]: \n\nMix path {mix_path} is not empty. "
-            "Amazon-Mix dataset mixed! "
+            "AmazonMix dataset mixed! "
             "Stop mixing immediately.\n\n"
         )
         return
@@ -429,9 +453,9 @@ def mix_dataset(categories: List[str]):
 
     logger.info("[CSIT5210 Info]: \n\nSaving mixed dataset to .csv file...\n\n")
 
-    all_train.to_csv(os.path.join(mix_path, "train_Amazon-Mix.csv"), index=False)
-    all_valid.to_csv(os.path.join(mix_path, "valid_Amazon-Mix.csv"), index=False)
-    all_test.to_csv(os.path.join(mix_path, "test_Amazon-Mix.csv"), index=False)
+    all_train.to_csv(os.path.join(mix_path, "train_AmazonMix.csv"), index=False)
+    all_valid.to_csv(os.path.join(mix_path, "valid_AmazonMix.csv"), index=False)
+    all_test.to_csv(os.path.join(mix_path, "test_AmazonMix.csv"), index=False)
 
     logger.info(
         "[CSIT5210 Info]: \n\nMixed dataset saved!\n\n"
