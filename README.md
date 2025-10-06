@@ -5,8 +5,8 @@
 ### Week 1-2: (Oct. 1 - Oct. 4) Preprocess
 
 - [x] Environment Setup (See the other repo)
-- [ ] Download Amazon Dataset
-- [ ] Pre-process Dataset with SR protocol
+- [x] Download Amazon Dataset
+- [x] Pre-process Dataset with SR protocol
     - Keep each user's interaction sequence (with clipping)
     - Divide train/validation/test sets
     - Map item ID to title
@@ -50,6 +50,18 @@
 
 ## Citations
 
+LLM2Rec: LLM2Rec: Large Language Models Are Powerful Embedding Models for Sequential Recommendation
+
+```bibtex
+@inproceedings{he2025llm2rec,
+  title={LLM2Rec: Large Language Models Are Powerful Embedding Models for Sequential Recommendation},
+  author={He, Yingzhi and Liu, Xiaohao and Zhang, An and Ma, Yunshan and Chua, Tat-Seng},
+  booktitle={Proceedings of the 31st ACM SIGKDD Conference on Knowledge Discovery and Data Mining V. 2},
+  pages={896--907},
+  year={2025}
+}
+```
+
 Amazon Reviews 2023
 
 ```bibtex
@@ -60,3 +72,4 @@ Amazon Reviews 2023
   year={2024}
 }
 ```
+
