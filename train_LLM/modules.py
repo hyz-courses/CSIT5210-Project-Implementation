@@ -23,7 +23,6 @@ See the docstring for knowing more about its usage.
 
 
 import random
-import json
 
 from typing import List, Tuple, Dict, Union
 
@@ -219,7 +218,7 @@ class DatasetSuite(TorchDataset):
         
         return {
             'input_ids': tokens[-self.max_len:],    # Last max_len tokens
-            'attention_mask': [1] * len(tokens),
+            'attention_mask': [1] * len(tokens[-self.max_len:]),
             'labels': labels[-self.max_len:]
         }
 
