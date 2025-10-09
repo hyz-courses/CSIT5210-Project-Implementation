@@ -30,8 +30,9 @@ from typing import List, Tuple, Dict, Union
 import pandas as pd
 from tqdm import tqdm
 
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset as TorchDataset
 from transformers import AutoTokenizer
+from datasets import Dataset as HFDataset
 
 
 
@@ -101,7 +102,7 @@ class Tokenizer:
         return self.tokenizer.decode(t) #type: ignore
 
 
-class DatasetSuite(Dataset):
+class DatasetSuite(TorchDataset):
     """
     A dataset suite that works as a middleware between
     the local, grained .csv data and the hugging-face
@@ -145,7 +146,7 @@ class DatasetSuite(Dataset):
         # encode the data.
         self.encoded_data = [
             self.__encode_xy(self.__get_xy(row)) 
-            for row in tqdm(self.data.iterrows())]
+            for _, row in tqdm(self.data.iterrows())]
 
     def __len__(self):
         return len(self.data)
@@ -165,7 +166,8 @@ class DatasetSuite(Dataset):
             Tuple[str, str]: A list of data -> ground-truth pairs.
         """
 
-        history_item_titles: List[str] = json.loads(row['history_item_titles'])
+        history_item_titles: List[str] = eval(
+            row['history_item_titles']) # json.loads will fail here with '
 
         assert isinstance(history_item_titles, list)
         
@@ -222,7 +224,7 @@ class DatasetSuite(Dataset):
         }
 
     
-    def to_hf_dict(self) -> Dict[str, List[Union[str, List[int]]]]:
+    def to_hf(self) -> HFDataset:
         """
         Convert the encoded data into HuggingFace
         format. Basically, it just "transpose" the
@@ -244,9 +246,9 @@ class DatasetSuite(Dataset):
         >>> }
 
         Returns:
-            Dict[str, List[List[int]]]: The HuggingFace format data.
+            HFDataset: The HuggingFace dataset object.
         """
 
-        return {
-            k: [v[k] for v in self.encoded_data] 
-            for k in self.encoded_data[0].keys()}
+        return HFDataset.from_dict({
+            k: [v[k] for v in self.encoded_data]
+            for k in self.encoded_data[0].keys()})
