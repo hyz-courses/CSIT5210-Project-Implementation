@@ -7,5 +7,5 @@
     "num_epochs": 10,
     "learning_rate": 0.0003,
     "max_len": 1024,
-    "output_dir": "/home/$USER/code/CSIT5210-Project-Implementation/output/Qwen2-0.5B-CSFT-AmazonMix-CSIT5210G1"
+    "output_dir": "/home/yhuangiy/code/CSIT5210-Project-Implementation/output/Qwen2-0.5B-CSFT-AmazonMix-CSIT5210G1"
 }

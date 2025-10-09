@@ -20,6 +20,7 @@ from transformers import (
     DataCollatorForSeq2Seq,
     EarlyStoppingCallback,
 )
+import fire
 
 from train_LLM.modules import DatasetSuite
 
@@ -79,7 +80,7 @@ class CSFTTrainSuite:
 
         self.pretrained_model = AutoModelForCausalLM.from_pretrained(
             pretrained_model_name_or_path=self.trainarg['base_model_path'],
-            torch_dtype=torch.float16,
+            torch_dtype=torch.bfloat16,
             trust_remote_code=True,
         )
 
@@ -272,11 +273,11 @@ class CSFTTrainSuite:
         )
 
 
-if __name__ == "__main__":
+def main():
     config_dir = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)),
-        '..', 'configs')
-    
+            os.path.dirname(os.path.abspath(__file__)),
+            '..', 'configs')
+        
     trainarg, steparg = [
         os.path.join(config_dir, file) 
         for file in ['csft_trainargs.json', 'csft_stepargs.json']]
@@ -288,3 +289,7 @@ if __name__ == "__main__":
 
     csft_train_suite.train()
     csft_train_suite.save()
+
+if __name__ == "__main__":
+    fire.Fire(main)
+
