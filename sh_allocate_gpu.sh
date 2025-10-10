@@ -1,0 +1,1 @@
+srun --account=mscitsuperpod --partition=normal --gpus-per-node=1 --time=08:00:00 --pty bash
