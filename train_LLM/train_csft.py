@@ -209,6 +209,12 @@ class CSFTTrainSuite:
 
         model_copy = self.__get_model_copy()
 
+        logger.info(
+            '[CSIT5210 Info]: \n\nCopyied a new model instance. \n',
+            f'Pre-trained: {id(self.pretrained_model)}, '
+            f'Fine-tuned: {id(self.finetuned_model)}\n\n'
+        )
+
         trainer = Trainer(
             model=model_copy,
             train_dataset=self.train_data,
