@@ -12,7 +12,7 @@ git push origin main:csft
 ## train
 GPU applition`
 ```shell
-srun --account=mscitsuperpod --partition=normal --gpus-per-node=1 --time=05:30:00 --pty bash
+srun --account=mscitsuperpod --partition=normal --gpus-per-node=1 --time=08:00:00 --pty bash
 ```
 run csft train
 ```shell
