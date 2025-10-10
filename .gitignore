@@ -1,2 +1,19 @@
-data/*
+# IDE Garbage
+__pycache__
+.pytest_cache
+.ipynb_checkpoints
+.vscode
+.git
+.idea
+.DS_Store
+.ipynb_checkpoints
+
+# Run-Time Garbage
 logs/*
+
+# Large Files
+data/*
+output
+wandb
+
+
