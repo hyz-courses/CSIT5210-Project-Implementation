@@ -58,11 +58,11 @@ class PromptDataset(Dataset):
         return len(self.data)
 
 
-    def generate_example_prompt(self, data_point):
-        return f"""{data_point["input"]}"""
+    # def generate_example_prompt(self, data_point):
+    #     return f"""{data_point["input"]}"""
     
-    def generate_prompt(self, data_point):
-        return data_point["input"]
+    # def generate_prompt(self, data_point):
+    #     return data_point["input"]
 
     
     def get_history(self, row):
@@ -102,7 +102,7 @@ class PromptDataset(Dataset):
         target_item = history['output']
         history['output'] = ''
         
-        prompt = self.generate_prompt(history)#history[input]
+        prompt = history["input"]
         tokens = self.tokenizer.encode(prompt, bos=False, eos=False)#encode history_item_title to generate a token 
         history["input"] = ""
         

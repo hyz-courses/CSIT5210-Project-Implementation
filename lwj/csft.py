@@ -33,14 +33,11 @@ def train(
         num_epochs: int = 10,
         learning_rate: float = 3e-4,
         cutoff_len: int = 1024,
-
         #llm setting
         group_by_length: bool = False,  # faster, but produces an odd training loss curve
-
         #wandb setting
         wandb_name: str = "Qwen2-0.5B-CSFT-AmazonMix-6",
         #others
-        category = "items",
         K=0,
         seed: int = 0,
 ):
@@ -63,14 +60,14 @@ def train(
                                     max_len=cutoff_len,  
                                     sample=-1, 
                                     seed=seed, 
-                                    category=category, 
+                                    category="Mix6Classes", 
                                     K = K)
    
     val_data = PromptDataset(train_file=eval_data_path, 
                                  tokenizer=tokenizer, 
                                  max_len=cutoff_len,  
                                  sample=2000, 
-                                 category=category, 
+                                 category="Mix6Classes", 
                                  K = K)
     
     # generate huggingface dataset format for training
