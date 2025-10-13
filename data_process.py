@@ -208,9 +208,7 @@ def load_raw_data(category: str):
 
 
 def get_5core_ui_list(
-    df_user_interact: pd.DataFrame, 
-    parentasin_title_map: dict, 
-    title_itemid_map: dict
+    df_user_interact: pd.DataFrame, parentasin_title_map: dict, title_itemid_map: dict
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
     Using the raw dataset, build up a list of leave-one-out
@@ -232,6 +230,9 @@ def get_5core_ui_list(
             A list of training records.
     """
 
+    def __is_invalid(test_str: str) -> bool:
+        return (pd.isna(test_str) or test_str == "" or test_str is None)
+    
     # Sort the list by user_id, then by timestamp
     # To build up leave-one-out dataset
     df_user_interact.sort_values(["user_id", "timestamp"])
@@ -262,60 +263,77 @@ def get_5core_ui_list(
             interaction[key_concern] for key_concern in key_concerns
         ]
 
-        if (len(itemtitle_list) == 0 
-            or itemtitle_list[0] == ''
-            or itemtitle_list[0] == None):
-            logger.warning(
-                    '[CSIT5210 Warning]: \n\nUser\'s interaction list is empty.'
-                    f'\n\n user id: {user_id}, item title list: {itemtitle_list}'
-                    '\n\nSkip this user.\n\n'
-                )
+        # User sequence is empty, drop the user.
+        msg_user_seq_empty = (
+            "[CSIT5210 Warning]: \n\nUser's interaction list is empty."
+            f"\n\n user id: {user_id}, item title list: {itemtitle_list}"
+            "\n\nSkip this user.\n\n")
+
+        if len(itemtitle_list) == 0:
+            logger.warning(msg_user_seq_empty)
             continue
 
-        interaction_length = len(parentasin_list)
+        # Find all the invalid titles in advance.
+        # Pad an invalid title at the end.
+        invalid_title_indexes = [
+            index for index, itemtitle in enumerate(itemtitle_list) 
+            if __is_invalid(itemtitle)] + [len(itemtitle_list)]
 
-        for ptr_seq_end in range(1, interaction_length):
-            new_itemid = itemid_list[ptr_seq_end]
-            new_itemtitle = itemtitle_list[ptr_seq_end]
+        # Given all the invalid title indexes,
+        # find all the valid title ranges.
+        valid_title_ranges = (
+            [(0, invalid_title_indexes[0])] + 
+            [(
+                invalid_title_indexes[i] + 1, invalid_title_indexes[i + 1])
+                for i in range(0, len(invalid_title_indexes) - 1)
+            ])
 
-            if (pd.isna(new_itemid) or new_itemid == None or 
-                pd.isna(new_itemtitle) or new_itemtitle == ''):
-                logger.warning(
-                    '[CSIT5210 Warning]: \n\nMeeting invalid item id/title:'
-                    f'\n\n item id: {new_itemid}, item title: {new_itemtitle}'
-                    '\n\nDrop all following records.\n\n'
-                )
-                break
+        # Pick out ranges that are too small.
+        valid_title_ranges = [
+            vt_range for vt_range in valid_title_ranges
+            if vt_range[1] - vt_range[0] > 2
+        ]
 
-            new_record = {
-                "user_id": user_id,
-                "history_item_asins": parentasin_list[:ptr_seq_end][-10:],
-                "new_item_asin": parentasin_list[ptr_seq_end],
-                "history_item_titles": itemtitle_list[:ptr_seq_end][-10:],
-                "new_item_title": itemtitle_list[ptr_seq_end],
-                "history_item_ids": itemid_list[:ptr_seq_end][-10:],
-                "new_item_id": itemid_list[ptr_seq_end],
-                "new_item_timestamp": timestamp_list[ptr_seq_end],
-            }
+        if len(valid_title_ranges) <= 0:
+            logger.warning(msg_user_seq_empty)
+            continue
 
-            # Mostly, new records are given to training set.
-            # For the last two records for each user, it will be given
-            # to the validation set and test set respectively.
+        # --- Convert user name to leave-one-out format ---
 
-            if ptr_seq_end < interaction_length - 2:
-                train_list.append(new_record)
-            elif ptr_seq_end == interaction_length - 2:
-                valid_list.append(new_record)
-            elif ptr_seq_end == interaction_length - 1:
-                test_list.append(new_record)
-            else:
-                message = (
-                    f"[CSIT5210 Error]: "
-                    f"Failed to construct leave-one-out dataset."
-                    f"Invalid pointer value {ptr_seq_end}."
-                )
-                logger.error(message)
-                raise ValueError(message)
+        # This user's leave-one-out record.
+        this_user_record: List[dict] = []
+
+        # Iterate all valid title ranges.
+        for start, end in valid_title_ranges:
+
+            # For a specific title range,
+            # iterate all titles and generate leave-one-out records.
+            for ptr_seq_end in range(start, end):
+                new_record = {
+                    "user_id": user_id,
+                    "history_item_asins": parentasin_list[start:ptr_seq_end][-10:],
+                    "new_item_asin": parentasin_list[ptr_seq_end],
+                    "history_item_titles": itemtitle_list[start:ptr_seq_end][-10:],
+                    "new_item_title": itemtitle_list[ptr_seq_end],
+                    "history_item_ids": itemid_list[start:ptr_seq_end][-10:],
+                    "new_item_id": itemid_list[ptr_seq_end],
+                    "new_item_timestamp": timestamp_list[ptr_seq_end],
+                }
+
+                this_user_record.append(new_record)
+
+        # Mostly, new records are given to training set.
+        # For the last two records for each user, it will be given
+        # to the validation set and test set respectively.
+
+        if len(this_user_record) <= 2:
+            # Only 2 records for this user,
+            # meaning that there's only three items in the sequence.
+            train_list.extend(this_user_record)
+        else:
+            train_list.extend(this_user_record[:-2])
+            valid_list.append(this_user_record[-2])
+            test_list.append(this_user_record[-1])
 
     df_train = pd.DataFrame(train_list)
     df_valid = pd.DataFrame(valid_list)
@@ -433,11 +451,7 @@ def mix_dataset(categories: List[str]):
             f"train size: {train_size}, valid size: {valid_size} , test size: {test_size}\n\n"
         )
 
-        stat[category] = {
-            'train': train_size,
-            'valid': valid_size,
-            'test': test_size
-        }
+        stat[category] = {"train": train_size, "valid": valid_size, "test": test_size}
 
         dataframe_train = dataframe_train.sample(train_size, random_state=114)
         dataframe_valid = dataframe_train.sample(valid_size, random_state=114)
@@ -460,15 +474,15 @@ def mix_dataset(categories: List[str]):
     logger.info(
         "[CSIT5210 Info]: \n\nMixed dataset saved!\n\n"
         f"Records: train {len(all_train)}, valid {len(all_valid)}, test {len(all_test)}."
-        'Saving meta....'
+        "Saving meta...."
     )
 
-    meta_path = os.path.join(mix_path, 'meta.json')
-    with open(meta_path, mode='w', encoding='utf-8') as f:
+    meta_path = os.path.join(mix_path, "meta.json")
+    with open(meta_path, mode="w", encoding="utf-8") as f:
         json.dump(stat, f, indent=4)
         f.close()
 
-    logger.info(f'Meta saved at {meta_path}.')
+    logger.info(f"Meta saved at {meta_path}.")
 
 
 def upload_dataset(categories: List[str]):
