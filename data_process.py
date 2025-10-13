@@ -19,9 +19,10 @@ import pandas as pd
 # Console logs
 from tqdm import tqdm
 from loguru import logger
+from utils.logs import bind_logger
 
+logger = bind_logger(logger, log_path="logs/train_csft.log")
 
-logger.add("logs/data_process.log", rotation="10 MB")
 T = TypeVar("T")
 
 """
@@ -64,7 +65,7 @@ class CategoryLoader(ABC, Generic[T]):
 
         if limit and limit < 0:
             message = (
-                f"[CSIT5210 Err]: The limit you inputted " f"is invalid. ({limit})"
+                f"The limit you inputted " f"is invalid. ({limit})"
             )
             logger.error(message)
             raise ValueError(message)
@@ -73,7 +74,11 @@ class CategoryLoader(ABC, Generic[T]):
     def _load(self, file_path, func: Callable = lambda x: x) -> T:
         pass
 
-    def __call__(self, func: Callable = lambda x: x) -> T:
+    @abstractmethod
+    def _store(self, obj: T, file_path, func: Callable = lambda x: x) -> None:
+        pass
+
+    def load(self, func: Callable = lambda x: x) -> T:
 
         file_name = f"{self.category}.{self.ext}"
 
@@ -84,18 +89,45 @@ class CategoryLoader(ABC, Generic[T]):
 
         if not file_path.endswith(f".{self.ext}"):
             message = (
-                f"[CSIT5210 Err]: The file path you inputted "
+                f"The file path you inputted "
                 f"is not a valid .{self.ext} file. ({file_path})"
             )
             logger.error(message)
             raise ValueError(message)
 
         if not os.path.exists(file_path):
-            message = f"[CSIT5210 Err]: The file" f" {file_path} does not exist."
+            message = f"The file {file_path} does not exist."
             logger.error(message)
             raise FileNotFoundError(message)
 
         return self._load(file_path, func)
+    
+    def store(self, obj: T, func: Callable = lambda x: x) -> None:
+        """
+        Store the processed data to a specific file format.
+        """
+
+        base_path = f"data/{self.phase}/{self.category}"
+        file_path = os.path.join(base_path, f"{self.type}_{self.category}.{self.ext}")
+        
+        if not os.path.exists(base_path):
+            logger.info(
+                f"Base path {base_path} does not exist. "
+                f"Creating..."
+            )
+            os.makedirs(base_path)
+        elif bool(os.path.exists(file_path)):
+            logger.info(
+                f"Base path {base_path} is not empty. "
+                f"Category {self.category} grained! "
+                f"Skipping..."
+            )
+            return
+        
+        file_path = os.path.join(base_path, f"{self.type}_{self.category}.{self.ext}")
+        self._store(obj, file_path, func)
+
+        logger.info(f"Category {self.category} file saved successfully to {file_path}.")
 
 
 class JsonlLoader(CategoryLoader[List[dict]]):
@@ -135,6 +167,51 @@ class JsonlLoader(CategoryLoader[List[dict]]):
             file_lines.close()
         return dict_lines
 
+    def _store(self, obj: List[dict], file_path, func: Callable = lambda x: x) -> None:
+        assert isinstance(obj, list)
+        with open(file_path, mode='w', encoding='utf-8') as f:
+            for record in func():
+                f.write(json.dumps(record) + '\n')
+            f.close()
+
+
+class JsonLoader(CategoryLoader[dict]):
+    """
+    Loads raw dataset in .json format from a
+    specific category.
+
+    Parameters:
+        category (str):
+            The category of the dataset.
+            E.g., "Video_Games", "Arts_Crafts_and_Sewing", etc.
+        phase (str):
+            The phase of the dataset.
+            E.g., "raw", "grained".
+        usage (str):
+            The usage of the dataset.
+            E.g., "meat", "train", "valid", "test".
+    """
+
+    def __init__(
+        self, category: str, phase: str, usage: str = "", limit: Optional[int] = None
+    ):
+        super().__init__(
+            category=category, ext="json", phase=phase, usage=usage, limit=limit
+        )
+
+    def _load(self, file_path, func: Callable = lambda x: x) -> dict:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            f.close()
+            return data
+
+    def _store(self, obj: dict, file_path, func: Callable = lambda x: x) -> None:
+        assert isinstance(obj, dict)
+        with open(file_path, mode='w', encoding='utf-8') as f:
+            obj_: dict = func(obj)
+            json.dump(obj_, f, indent=4)
+            f.close()
+
 
 class CSVLoader(CategoryLoader[pd.DataFrame]):
     """
@@ -169,6 +246,57 @@ class CSVLoader(CategoryLoader[pd.DataFrame]):
         )
         return df
 
+    def _store(self, obj: pd.DataFrame, file_path, func: Callable = lambda x: x) -> None:
+        assert isinstance(obj, pd.DataFrame)
+        obj.to_csv(file_path, index=False)
+        
+
+class TxtLoader(CategoryLoader[List[str]]):
+    """
+    Loads raw dataset in .txt format from a
+    specific category.
+
+    Parameters:
+        category (str):
+            The category of the dataset.
+            E.g., "Video_Games", "Arts_Crafts_and_Sewing", etc.
+        phase (str):
+            The phase of the dataset.
+            E.g., "raw", "grained".
+        usage (str):
+            The usage of the dataset.
+            E.g., "meat", "train", "valid", "test".
+    """
+        
+    def __init__(
+        self, category: str, phase: str, usage: str = "", limit: Optional[int] = None
+    ):
+        super().__init__(
+            category=category, ext="txt", phase=phase, usage=usage, limit=limit
+        )
+
+    def _load(self, file_path, func: Callable = lambda x: x) -> List[str]:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            lines = []
+            for i, line in enumerate(f):
+                lines.append(func(line))
+                if self.limit and i >= self.limit:
+                    logger.warning(
+                        f"Over dataset size limit {self.limit}, "
+                        f"stop loading more."
+                    )
+                    break
+            f.close()
+            return lines
+
+    def _store(self, obj: List[str], file_path, func: Callable = lambda x: x) -> None:
+        assert isinstance(obj, list)
+
+        with open(file_path, 'w', encoding='utf-8') as f:
+            for record in obj:
+                f.write(record + '\n')
+            f.close()
+
 
 def load_raw_data(category: str):
     """
@@ -185,7 +313,7 @@ def load_raw_data(category: str):
         parentasin_title_map (List[dict]):
             A map from parent asin to title.
     """
-    _parentasin_title_map = JsonlLoader(category=category, phase="raw", usage="meta")(
+    _parentasin_title_map = JsonlLoader(category=category, phase="raw", usage="meta").load(
         func=lambda record: {
             "parent_asin": record["parent_asin"],
             "title": record["title"],
@@ -202,14 +330,14 @@ def load_raw_data(category: str):
 
     df_user_interact = CSVLoader(
         category=category, phase="raw", usage="", limit=200000
-    )()
+    ).load()
 
     return df_user_interact, parentasin_title_map, title_itemid_map
 
 
 def get_5core_ui_list(
     df_user_interact: pd.DataFrame, parentasin_title_map: dict, title_itemid_map: dict
-) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, set]:
     """
     Using the raw dataset, build up a list of leave-one-out
     user interactions. The items are represented by:
@@ -254,9 +382,14 @@ def get_5core_ui_list(
         {key_concern: list for key_concern in key_concerns}
     ).to_dict("index")
 
+    # Train, valid and test list of leave-one-out records.
     train_list: List[dict] = []
     valid_list: List[dict] = []
     test_list: List[dict] = []
+
+    # Set of titles this user used.
+    title_set = set()
+
     for user_id, interaction in user_data.items():
 
         (parentasin_list, timestamp_list, itemtitle_list, itemid_list) = [
@@ -265,9 +398,9 @@ def get_5core_ui_list(
 
         # User sequence is empty, drop the user.
         msg_user_seq_empty = (
-            "[CSIT5210 Warning]: \n\nUser's interaction list is empty."
-            f"\n\n user id: {user_id}, item title list: {itemtitle_list}"
-            "\n\nSkip this user.\n\n")
+            "User's interaction list is not valid to produce leave-one-out dataset."
+            f"\n\nuser id: {user_id}, item title list: {itemtitle_list}"
+            "\n\nSkip this user.")
 
         if len(itemtitle_list) == 0:
             logger.warning(msg_user_seq_empty)
@@ -301,10 +434,15 @@ def get_5core_ui_list(
         # --- Convert user name to leave-one-out format ---
 
         # This user's leave-one-out record.
-        this_user_record: List[dict] = []
+        this_user_loo: List[dict] = []
+
+        # This user's involved titles.
+        this_user_title_set = set()
 
         # Iterate all valid title ranges.
         for start, end in valid_title_ranges:
+
+            this_user_title_set.update(itemtitle_list[start:end])
 
             # For a specific title range,
             # iterate all titles and generate leave-one-out records.
@@ -320,26 +458,29 @@ def get_5core_ui_list(
                     "new_item_timestamp": timestamp_list[ptr_seq_end],
                 }
 
-                this_user_record.append(new_record)
+                this_user_loo.append(new_record)
 
         # Mostly, new records are given to training set.
         # For the last two records for each user, it will be given
         # to the validation set and test set respectively.
 
-        if len(this_user_record) <= 2:
+        if len(this_user_loo) <= 2:
             # Only 2 records for this user,
             # meaning that there's only three items in the sequence.
-            train_list.extend(this_user_record)
+            train_list.extend(this_user_loo)
         else:
-            train_list.extend(this_user_record[:-2])
-            valid_list.append(this_user_record[-2])
-            test_list.append(this_user_record[-1])
+            train_list.extend(this_user_loo[:-2])
+            valid_list.append(this_user_loo[-2])
+            test_list.append(this_user_loo[-1])
+
+        # Record this user's titles
+        title_set.update(this_user_title_set)
 
     df_train = pd.DataFrame(train_list)
     df_valid = pd.DataFrame(valid_list)
     df_test = pd.DataFrame(test_list)
 
-    return df_train, df_valid, df_test
+    return df_train, df_valid, df_test, title_set
 
 
 def grain_dataset(categories: List[str]):
@@ -350,46 +491,28 @@ def grain_dataset(categories: List[str]):
             A list of categories to be grained.
     """
 
-    logger.info("[CSIT5210 Info]: \n\nGraining dataset started!\n\n")
+    logger.info("Graining dataset started!")
 
     for category in categories:
 
-        logger.info(f"[CSIT5210 Info]: \n\nGraining category {category} dataset...\n\n")
+        logger.info(f"Graining category {category} dataset...")
 
-        base_path = f"data/grained/{category}"
-
-        if not os.path.exists(base_path):
-            logger.info(
-                f"[CSIT5210 Info]: \n\nBase path {base_path} does not exist. "
-                f"Creating...\n\n"
-            )
-            os.makedirs(base_path)
-        elif bool(os.listdir(base_path)):
-            logger.info(
-                f"[CSIT5210 Info]: \n\nBase path {base_path} is not empty. "
-                f"Category {category} grained! "
-                f"Skipping...\n\n"
-            )
-            continue
-
-        logger.info(f"[CSIT5210 Info]: \n\nLoading {category} raw 5-core data...\n\n")
+        logger.info(f"Loading {category} raw 5-core data...")
         df_ui, pa_title_map, title_id_map = load_raw_data(category=category)
 
-        logger.info(f"[CSIT5210 Info]: \n\nGraining {category} data...\n\n")
-        df_train, df_valid, df_test = get_5core_ui_list(
+        logger.info(f"Graining {category} data...")
+        df_train, df_valid, df_test, set_title = get_5core_ui_list(
             df_user_interact=df_ui,
             parentasin_title_map=pa_title_map,
             title_itemid_map=title_id_map,
         )
 
-        logger.info(
-            f"[CSIT5210 Info]: \n\nSaving {category} train, "
-            f"valid and test .csv files...\n\n"
-        )
+        logger.info(f"Saving {category} train, valid and test .csv files...")
 
-        df_train.to_csv(os.path.join(base_path, f"train_{category}.csv"), index=False)
-        df_valid.to_csv(os.path.join(base_path, f"valid_{category}.csv"), index=False)
-        df_test.to_csv(os.path.join(base_path, f"test_{category}.csv"), index=False)
+        CSVLoader(category=category, phase='grained', usage='train').store(obj=df_train)
+        CSVLoader(category=category, phase='grained', usage='valid').store(obj=df_valid)
+        CSVLoader(category=category, phase='grained', usage='test').store(obj=df_test)
+        TxtLoader(category=category, phase='grained', usage='titles').store(obj=list(set_title))
 
 
 def mix_dataset(categories: List[str]):
@@ -400,22 +523,7 @@ def mix_dataset(categories: List[str]):
             A list of categories to be mixed.
     """
 
-    logger.info("[CSIT5210 Info]: \n\nMixing Amazon dataset started!\n\n")
-
-    mix_path = "data/grained/AmazonMix"
-    if not os.path.exists(mix_path):
-        logger.info(
-            f"[CSIT5210 Info]: \n\nMix path {mix_path} does not exist. "
-            f"Creating...\n\n"
-        )
-        os.makedirs(mix_path)
-    elif bool(os.listdir(mix_path)):
-        logger.info(
-            f"[CSIT5210 Info]: \n\nMix path {mix_path} is not empty. "
-            "AmazonMix dataset mixed! "
-            "Stop mixing immediately.\n\n"
-        )
-        return
+    logger.info("Mixing Amazon dataset started!")
 
     all_train = pd.DataFrame()
     all_valid = pd.DataFrame()
@@ -424,19 +532,19 @@ def mix_dataset(categories: List[str]):
     stat = DefaultDict()
 
     for category in categories:
-        logger.info(f"[CSIT5210 Info]: \n\nSampling category {category} dataset...\n\n")
+        logger.info(f"Sampling category {category} dataset...")
 
         dataframe_train = CSVLoader(
             category=category, phase="grained", usage="train", limit=172747
-        )()
+        ).load()
 
         dataframe_valid = CSVLoader(
             category=category, phase="grained", usage="valid", limit=172747
-        )()
+        ).load()
 
         dataframe_test = CSVLoader(
             category=category, phase="grained", usage="test", limit=172747
-        )()
+        ).load()
 
         category_length = (
             len(dataframe_train) + len(dataframe_valid) + len(dataframe_test)
@@ -447,8 +555,8 @@ def mix_dataset(categories: List[str]):
         test_size = math.ceil(train_size * 0.125)
 
         logger.info(
-            f"[CSIT5210 Info]: \n\nCategory {category}:\n\n"
-            f"train size: {train_size}, valid size: {valid_size} , test size: {test_size}\n\n"
+            f"Category {category}:\n"
+            f"train size: {train_size}, valid size: {valid_size} , test size: {test_size}"
         )
 
         stat[category] = {"train": train_size, "valid": valid_size, "test": test_size}
@@ -458,31 +566,27 @@ def mix_dataset(categories: List[str]):
         dataframe_test = dataframe_train.sample(test_size, random_state=114)
 
         logger.info(
-            f"[CSIT5210 Info]: \n\nAdding {category} to buffer dataframe...\n\n"
+            f"Adding {category} to buffer dataframe..."
         )
 
         all_train = pd.concat([all_train, dataframe_train])
         all_valid = pd.concat([all_valid, dataframe_valid])
         all_test = pd.concat([all_test, dataframe_test])
 
-    logger.info("[CSIT5210 Info]: \n\nSaving mixed dataset to .csv file...\n\n")
+    logger.info("Saving mixed dataset to .csv file...")
 
-    all_train.to_csv(os.path.join(mix_path, "train_AmazonMix.csv"), index=False)
-    all_valid.to_csv(os.path.join(mix_path, "valid_AmazonMix.csv"), index=False)
-    all_test.to_csv(os.path.join(mix_path, "test_AmazonMix.csv"), index=False)
+    CSVLoader(category='AmazonMix', phase='grained', usage='train').store(obj=all_train)
+    CSVLoader(category='AmazonMix', phase='grained', usage='valid').store(obj=all_valid)
+    CSVLoader(category='AmazonMix', phase='grained', usage='test').store(obj=all_test)
+    JsonLoader(category='AmazonMix', phase='grained', usage='meta').store(obj=stat)
 
     logger.info(
-        "[CSIT5210 Info]: \n\nMixed dataset saved!\n\n"
+        "Mixed dataset saved!\n"
         f"Records: train {len(all_train)}, valid {len(all_valid)}, test {len(all_test)}."
         "Saving meta...."
     )
 
-    meta_path = os.path.join(mix_path, "meta.json")
-    with open(meta_path, mode="w", encoding="utf-8") as f:
-        json.dump(stat, f, indent=4)
-        f.close()
-
-    logger.info(f"Meta saved at {meta_path}.")
+    
 
 
 def upload_dataset(categories: List[str]):
@@ -494,11 +598,9 @@ def upload_dataset(categories: List[str]):
     """
 
     for category in categories:
-        base_path = f"data/grained/{category}"
-
-        df_train = pd.read_csv(os.path.join(base_path, f"train_{category}.csv"))
-        df_valid = pd.read_csv(os.path.join(base_path, f"valid_{category}.csv"))
-        df_test = pd.read_csv(os.path.join(base_path, f"test_{category}.csv"))
+        df_train = CSVLoader(category=category, phase='grained', usage='train').load()
+        df_valid = CSVLoader(category=category, phase='grained', usage='valid').load()
+        df_test = CSVLoader(category=category, phase='grained', usage='test').load()
 
         (train_dataset, valid_dataset, test_dataset) = [
             Dataset.from_pandas(df) for df in [df_train, df_valid, df_test]
