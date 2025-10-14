@@ -343,7 +343,7 @@ def load_raw_data(category: str):
     }
 
     df_user_interact = CSVLoader(
-        category=category, phase="raw", usage="", limit=200000
+        category=category, phase="raw", usage="", limit=400000
     ).load()
 
     return df_user_interact, parentasin_title_map, title_itemid_map
