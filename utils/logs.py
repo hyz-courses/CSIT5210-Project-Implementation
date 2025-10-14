@@ -9,7 +9,7 @@ from typing import Optional
 from loguru import logger
 from loguru._logger import Logger
 
-def bind_logger(_logger: Logger, log_path: Optional[str] = None) -> Logger:
+def bind_logger(_logger, log_path: Optional[str] = None) -> Logger:
     """
     Bind a logger with specific format and optional file logging.
     

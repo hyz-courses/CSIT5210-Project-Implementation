@@ -79,6 +79,15 @@ class CategoryLoader(ABC, Generic[T]):
         pass
 
     def load(self, func: Callable = lambda x: x) -> T:
+        """
+        Load the dataset file from a specific path.
+        Parameters:
+            func (Callable):
+                The function to apply to the loaded object.
+        Returns:
+            T:
+                The loaded object.
+        """
 
         file_name = f"{self.category}.{self.ext}"
 
@@ -105,6 +114,11 @@ class CategoryLoader(ABC, Generic[T]):
     def store(self, obj: T, func: Callable = lambda x: x) -> None:
         """
         Store the processed data to a specific file format.
+        Parameters:
+            obj (T):
+                The object to store.
+            func (Callable):
+                The function to apply to the object before storing.
         """
 
         base_path = f"data/{self.phase}/{self.category}"
@@ -446,7 +460,7 @@ def get_5core_ui_list(
 
             # For a specific title range,
             # iterate all titles and generate leave-one-out records.
-            for ptr_seq_end in range(start, end):
+            for ptr_seq_end in range(start + 1, end):
                 new_record = {
                     "user_id": user_id,
                     "history_item_asins": parentasin_list[start:ptr_seq_end][-10:],
