@@ -18,7 +18,7 @@ from the source code to assist our implementation.
 import os
 
 from copy import copy
-from typing import cast, Union, Type, Tuple
+from typing import cast, Union, Type, Tuple, Optional
 from pathlib import Path
 
 import numpy as np
@@ -74,8 +74,9 @@ class MNTPTrainer(Trainer):
         self.label_names = ["labels"]
         super().__init__(*args, **kwargs)
     
-    def _save(self):
-        output_dir = self.args.output_dir
+    def _save(self, output_dir: Optional[str] = None, state_dict=None):
+        # If we are executing this function, we are the process zero, so we don't check for that.
+        output_dir = output_dir if output_dir is not None else self.args.output_dir
         os.makedirs(output_dir, exist_ok=True)
 
         # Ensure that the model is of the correct type
