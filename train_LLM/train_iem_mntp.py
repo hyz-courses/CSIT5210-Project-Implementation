@@ -276,7 +276,7 @@ class MNTPTrainSuite(TrainSuite):
                 logits = logits[0]
             return logits.argmax(dim=-1)
         
-        def comopute_metrics(eval_preds: Tuple[Tensor, Tensor]):
+        def compute_metrics(eval_preds: Tuple[Tensor, Tensor]):
             preds, labels = eval_preds
             preds, labels = [
                 preds[:, :-1].reshape(-1), 
@@ -294,7 +294,7 @@ class MNTPTrainSuite(TrainSuite):
             eval_dataset=self.eval_dataset,
             tokenizer=self.tokenizer,
             data_collator=self.data_collator,
-            compute_metrics=comopute_metrics,
+            compute_metrics=compute_metrics,
             preprocess_logits_for_metrics=preprocess_logits_for_metrics,
         )
 
