@@ -6,12 +6,8 @@ import logging
 import math
 import os
 import sys
-import warnings
 from dataclasses import dataclass, field
-from itertools import chain
-from typing import Optional, Any, Tuple, List
-import numpy as np
-
+from typing import Optional
 import datasets
 import evaluate
 from datasets import load_dataset
@@ -19,7 +15,6 @@ from datasets import load_dataset
 import torch
 import transformers
 from transformers import (
-    CONFIG_MAPPING,
     MODEL_FOR_MASKED_LM_MAPPING,
     AutoConfig,
     AutoTokenizer,
@@ -31,11 +26,8 @@ from transformers import (
     is_torch_tpu_available,
     set_seed,
 )
-from transformers.trainer_utils import get_last_checkpoint
-from transformers.utils import send_example_telemetry
-from transformers.utils.versions import require_version
 
-from peft import LoraConfig, get_peft_model
+from transformers.utils.versions import require_version
 
 from llm2vec.models import (
     MistralBiForMNTP,
@@ -347,7 +339,7 @@ class MNTPTrainer(Trainer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.label_names = ["labels"]
-
+ 
 
     # We need a custom save function as we have to save the inner model
     def _save(self, output_dir: Optional[str] = None, state_dict=None):

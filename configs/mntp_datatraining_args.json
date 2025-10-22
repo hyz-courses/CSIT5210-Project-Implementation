@@ -1,0 +1,6 @@
+{
+  "dataset_name": "data/item_titles.txt",
+  "line_by_line": true,
+  "max_seq_length": 512,
+  "mlm_probability": 0.2
+}

@@ -6,7 +6,6 @@ CSIT5210 - Data Mining and Knowledge Discovery
 """
 
 import os
-import json
 import copy
 
 from loguru import logger
@@ -23,16 +22,19 @@ from transformers import (
 import fire
 
 from train_LLM.modules import DatasetSuite
+from train_LLM.modules import TrainSuite
+from utils.logs import bind_logger
 
-logger.add("logs/train_csft.log", rotation="10 MB")
+logger = bind_logger(logger, log_path="../logs/csft_train.log")
 
 
-class CSFTTrainSuite:
+class CSFTTrainSuite(TrainSuite):
     """
-    The trainer class for CSFT.
+    An inheritance of the TrainSuite class for CSFT.
     """
 
     def __init__(self, trainarg_path: str, steparg_path: str):
+        super().__init__()
 
         # Load configs
         logger.info(
@@ -40,8 +42,8 @@ class CSFTTrainSuite:
             f'- train args: {trainarg_path}\n'
             f'- step args: {steparg_path}\n\n')
 
-        self.trainarg = self.__load_config(trainarg_path)
-        self.steparg = self.__load_config(steparg_path)
+        self.trainarg = self._load_config(trainarg_path)
+        self.steparg = self._load_config(steparg_path)
 
         logger.info('[CSIT5210 Info]: Done!')
 
@@ -56,17 +58,17 @@ class CSFTTrainSuite:
             f'- Train data: {_train_data_path}\n'
             f'- Validation data: {_valid_data_path}\n\n')
 
-        self.__check_exist(
+        self._check_exist(
             _base_model_path, 
             what="Base model", 
             how="download base model")
         
-        self.__check_exist(
+        self._check_exist(
             _train_data_path, 
             what="Train data", 
             how="run data_process.py")
         
-        self.__check_exist(
+        self._check_exist(
             _valid_data_path, 
             what="Validation data", 
             how="run data_process.py")
@@ -154,44 +156,7 @@ class CSFTTrainSuite:
 
         logger.info('[CSIT5210 Info]: Done!')
 
-    def __check_exist(self, path: str, what: str, how: str):
-        """
-        Check whether a key file is exist.
-        Parameters:
-            path (str): 
-                The path of the key file.
-            what (str): 
-                The name of the key file.
-            how (str): 
-                How to get the key file.
-        """
-        if os.path.exists(path):
-            return
-        
-        logger.error(
-            f'[CSIT5210 Error]: \n\n{what} does not exist! '
-            f'Missing {path}. '
-            f'Did you {how}?\n\n')
-        raise FileNotFoundError(
-            f'Base model {path} does not exist.')
-
-    def __load_config(self, path: str) -> dict:
-        """
-        Load configuration from a .json file.
-        Parameters:
-            config_path (str):
-                Path to the .json file.
-        Returns:
-            dict:
-                Configuration dictionary.
-        """
-
-        with open(path, "r", encoding="utf-8") as f:
-            config = json.load(f)
-            f.close()
-        return config
-
-    def __get_model_copy(self):
+    def _get_model_copy(self):
         """
         Clone the loaded model to a new memory space.
         Returns:
@@ -207,7 +172,7 @@ class CSFTTrainSuite:
 
         logger.info("[CSIT5210 Info]: Initializing trainer...")
 
-        model_copy = self.__get_model_copy()
+        model_copy = self._get_model_copy()
 
         logger.info(
             '[CSIT5210 Info]: \n\nCopyied a new model instance. \n',
@@ -243,7 +208,6 @@ class CSFTTrainSuite:
         self.finetuned_model = model_copy
 
         logger.info('[CSIT5210 Info]: Done!')
-
         
     def save(self):
         """
