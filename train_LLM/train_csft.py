@@ -25,7 +25,13 @@ from train_LLM.modules import DatasetSuite
 from train_LLM.modules import TrainSuite
 from utils.logs import bind_logger
 
-logger = bind_logger(logger, log_path="../logs/csft_train.log")
+THIS_FILE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+logger = bind_logger(logger,
+                     log_path=os.path.join(
+                        THIS_FILE_DIR, "..",
+                        "logs", "csft_train.log"
+                     ))
 
 
 class CSFTTrainSuite(TrainSuite):
@@ -34,18 +40,18 @@ class CSFTTrainSuite(TrainSuite):
     """
 
     def __init__(self, trainarg_path: str, steparg_path: str):
-        super().__init__()
+        super().__init__(logger)
 
         # Load configs
         logger.info(
-            '[CSIT5210 Info]:\n\nLoading configs...\n'
+            'Loading configs...\n'
             f'- train args: {trainarg_path}\n'
             f'- step args: {steparg_path}\n\n')
 
         self.trainarg = self._load_config(trainarg_path)
         self.steparg = self._load_config(steparg_path)
 
-        logger.info('[CSIT5210 Info]: Done!')
+        logger.info('Done!')
 
         # Prior check if anything is missing
         _base_model_path = self.trainarg['base_model_path']
@@ -53,10 +59,10 @@ class CSFTTrainSuite(TrainSuite):
         _valid_data_path = self.trainarg['eval_data_path']
 
         logger.info(
-            '[CSIT5210 Info]:\n\nChecking missing files...\n'
+            'Checking missing files...\n'
             f'- Base model: {_base_model_path}\n'
             f'- Train data: {_train_data_path}\n'
-            f'- Validation data: {_valid_data_path}\n\n')
+            f'- Validation data: {_valid_data_path}')
 
         self._check_exist(
             _base_model_path, 
@@ -73,12 +79,12 @@ class CSFTTrainSuite(TrainSuite):
             what="Validation data", 
             how="run data_process.py")
         
-        logger.info('[CSIT5210 Info]: Done! No missing files.')
+        logger.info('Done! No missing files.')
         
         # Model
         logger.info(
-            '[CSIT5210 Info]:\n\nInitializing model '
-            f'from pretrained {self.trainarg["base_model_path"]}...\n\n')
+            'Initializing model '
+            f'from pretrained {self.trainarg["base_model_path"]}...')
 
         self.pretrained_model = AutoModelForCausalLM.from_pretrained(
             pretrained_model_name_or_path=self.trainarg['base_model_path'],
@@ -88,12 +94,12 @@ class CSFTTrainSuite(TrainSuite):
 
         self.finetuned_model = None
 
-        logger.info('[CSIT5210 Info]: Done!')
+        logger.info('Done!')
 
         # Tokenizer
         logger.info(
-            '[CSIT5210 Info]:\n\nInitializing tokenizer '
-            f'from pretrained {self.trainarg["base_model_path"]}...\n\n')
+            'nitializing tokenizer '
+            f'from pretrained {self.trainarg["base_model_path"]}...')
 
         self.tokenizer = AutoTokenizer.from_pretrained(
             pretrained_model_name_or_path=self.trainarg['base_model_path'],
@@ -104,15 +110,14 @@ class CSFTTrainSuite(TrainSuite):
         self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
         self.tokenizer.padding_side = "left"
 
-        logger.info('[CSIT5210 Info]: Done!')
+        logger.info('Done!')
 
         # Dataset
         logger.info(
-            '[CSIT5210 Info]:\n\nInitializing dataset suites. '
-            'This may take a while...\n\n')
+            'Initializing dataset suites. '
+            'This may take a while...')
 
-        logger.info('[CSIT5210 Info]:\n\n'
-                    'Loading training data suite...\n\n')
+        logger.info('Loading training data suite...')
 
         self.train_data = DatasetSuite(
             csv_file=str(self.trainarg["train_data_path"]),
@@ -121,10 +126,9 @@ class CSFTTrainSuite(TrainSuite):
             sample=-1,
         ).to_hf()
 
-        logger.info('[CSIT5210 Info]: Done!')
+        logger.info('Done!')
 
-        logger.info('[CSIT5210 Info]:\n\n'
-                    'Loading validation data suite...\n\n')
+        logger.info('Loading validation data suite...')
 
         self.val_data = DatasetSuite(
             csv_file=str(self.trainarg["eval_data_path"]),
@@ -133,11 +137,10 @@ class CSFTTrainSuite(TrainSuite):
             sample=2000,
         ).to_hf()
 
-        logger.info('[CSIT5210 Info]: Done!')
+        logger.info('Done!')
 
         # Summing up steparg
-        logger.info('[CSIT5210 Info]:\n\n'
-                    'Summing up steparg...\n\n')
+        logger.info('Summing up steparg...')
         
         gradient_accumulation_steps: int = int(self.trainarg["batch_size"]) // int(
             self.trainarg["micro_batch_size"]
@@ -154,7 +157,7 @@ class CSFTTrainSuite(TrainSuite):
             }
         )
 
-        logger.info('[CSIT5210 Info]: Done!')
+        logger.info('Done!')
 
     def _get_model_copy(self):
         """
@@ -170,14 +173,14 @@ class CSFTTrainSuite(TrainSuite):
         Train the model.
         """
 
-        logger.info("[CSIT5210 Info]: Initializing trainer...")
+        logger.info("Initializing trainer...")
 
         model_copy = self._get_model_copy()
 
         logger.info(
-            '[CSIT5210 Info]: \n\nCopyied a new model instance. \n',
+            'Copyied a new model instance. \n',
             f'Pre-trained: {id(self.pretrained_model)}, '
-            f'Fine-tuned: {id(self.finetuned_model)}\n\n'
+            f'Fine-tuned: {id(self.finetuned_model)}'
         )
 
         trainer = Trainer(
@@ -194,20 +197,20 @@ class CSFTTrainSuite(TrainSuite):
             callbacks=[EarlyStoppingCallback(early_stopping_patience=5)],
         )
 
-        logger.info("[CSIT5210 Info]: Trainer initialized successfully!")
+        logger.info("Trainer initialized successfully!")
 
-        logger.info('[CSIT5210 Info]: \n\nFine-tuning model...\n\n')
+        logger.info('Fine-tuning model...\n\n')
 
         model_copy.config.use_cache = False
         trainer.evaluate()
         trainer.train(resume_from_checkpoint=None)
 
-        logger.info('[CSIT5210 Info]: \n\nFine-tuning done! '
-                    'Overwriting existing fine-tuned model...\n\n')
+        logger.info('Fine-tuning done! '
+                    'Overwriting existing fine-tuned model...')
 
         self.finetuned_model = model_copy
 
-        logger.info('[CSIT5210 Info]: Done!')
+        logger.info('Done!')
         
     def save(self):
         """
@@ -215,13 +218,13 @@ class CSFTTrainSuite(TrainSuite):
         """
 
         logger.info(
-            '[CSIT5210 Info]: \n\nSaving the fine-tuned model...\n\n'
+            'Saving the fine-tuned model...'
         )
 
         if not self.finetuned_model:
             message = (
-                '[CSIT5210 Error]: \n\nModel is not fine tuned!'
-                'Please train it first!\n\n'
+                'Model is not fine tuned!'
+                'Please train it first!'
             )
             logger.error(message)
             raise ValueError(message)
@@ -229,24 +232,17 @@ class CSFTTrainSuite(TrainSuite):
         output_dir = self.trainarg['output_dir']
         if not os.path.exists(output_dir):
             logger.info(
-            '[CSIT5210 Info]: \n\n'
-            f'Output directory {output_dir} does not exist. '
-            'Creating...\n\n')
+                f'Output directory {output_dir} does not exist. Creating...')
 
             os.makedirs(output_dir)
         
         self.finetuned_model.save_pretrained(output_dir)
 
-        logger.info(
-            '[CSIT5210 Info]: \n\n '
-            f'Fintuned model saved to {output_dir}!\n\n'
-        )
+        logger.info(f'Fintuned model saved to {output_dir}!\n\n')
 
 
 def main():
-    config_dir = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)),
-            '..', 'configs')
+    config_dir = os.path.join(THIS_FILE_DIR, '..', 'configs')
         
     trainarg, steparg = [
         os.path.join(config_dir, file) 

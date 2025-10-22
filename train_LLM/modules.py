@@ -26,9 +26,9 @@ import random
 import json
 import ast
 
-from typing import List, Tuple, Dict, Union
+from typing import cast, List, Tuple, Dict, Union
 from abc import ABC, abstractmethod
-from loguru import logger
+from loguru._logger import Logger
 
 import pandas as pd
 from tqdm import tqdm
@@ -265,8 +265,8 @@ class TrainSuite(ABC):
     and implement the abstract methods.
     """
 
-    def __init__(self):
-        pass
+    def __init__(self, _logger):
+        self.logger = cast(Logger, _logger)
 
     def _load_config(self, path: str) -> dict:
         """
@@ -298,7 +298,7 @@ class TrainSuite(ABC):
         if os.path.exists(path):
             return
         
-        logger.error(
+        self.logger.error(
             f'[CSIT5210 Error]: \n\n{what} does not exist! '
             f'Missing {path}. '
             f'Did you {how}?\n\n')

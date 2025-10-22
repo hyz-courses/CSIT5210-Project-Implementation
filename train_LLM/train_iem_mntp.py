@@ -24,6 +24,7 @@ from pathlib import Path
 import numpy as np
 import torch
 import evaluate
+from loguru import logger
 from datasets import load_dataset, DatasetDict
 from torch import Tensor
 from torch.nn import Embedding
@@ -46,6 +47,15 @@ from llm2vec.models import (
 
 from train_LLM.modules import TrainSuite
 from train_LLM.data_classes import DataArgs, ModelArgs
+from utils.logs import bind_logger
+
+THIS_FILE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+logger = bind_logger(logger,
+                     log_path=os.path.join(
+                        THIS_FILE_DIR, "..",
+                        "logs", "iem_mntp.log"
+                     ))
 
 UnionBiForMNTP = Union[ # pylint: disable=invalid-name
     MistralBiForMNTP,
@@ -101,10 +111,12 @@ class MNTPTrainSuite(TrainSuite):
     """
     
     def __init__(self, config_path: str):
-        super().__init__()
+        super().__init__(logger)
 
         # ===== 0. Preflight ===== 
         # Check if there's any missing essential files.
+
+        logger.info("Preflighting to check any missing files...")
         
         # 0.1 Configuration json files
         args = [
@@ -123,23 +135,38 @@ class MNTPTrainSuite(TrainSuite):
             self._load_config(arg_path) for arg_path in arg_paths
         ]
 
+        logger.info(
+            "No missing configuration files."
+            "Loading training, data, and model arguments...")
+
         self.train_args = TrainingArguments(**_train_args)
         self.data_args = DataArgs(**_data_args)
         self.model_args = ModelArgs(**_model_args)
+
+        logger.info("Arguments loaded. Checking if dataset exists...")
 
         # 0.2 Dataset files
         dataset_path = self.data_args.dataset_name
         self._check_exist(dataset_path, "MNTP dataset", "run data_process.py")
 
+        logger.info("Dataset exists, and loaded.")
+
         set_seed(self.train_args.seed)
+
+        logger.info(f"Random seed set to {self.train_args.seed}")
 
         # cache_dir: None, revision: main, token: None, trust: false, use_fast: true
 
         # ===== 1. Configs =====
+
+        logger.info("Loading model config...")
+
         self.config = AutoConfig.from_pretrained(
             self.model_args.model_name_or_path,
             trust_remote_code=self.model_args.trust_remote_code
         )
+
+        logger.info("Done!\nLoading tokenizer...")
 
         # ===== 2. Tokenizer =====
         self.tokenizer: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(
@@ -153,6 +180,8 @@ class MNTPTrainSuite(TrainSuite):
 
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
+
+        logger.info("Done!\nLoading model...")
 
         # ===== 3. Model =====
         model_class: Type[UnionBiForMNTP] = {
@@ -187,6 +216,8 @@ class MNTPTrainSuite(TrainSuite):
             model.resize_token_embeddings(len(self.tokenizer))
 
         self.model = model
+
+        logger.info("Done!\nLoading & tokenizing datasets...")
 
         # ===== 4. Load and tokenize datasets =====
 
@@ -230,7 +261,10 @@ class MNTPTrainSuite(TrainSuite):
             pad_to_multiple_of=8 if self.train_args.fp16 else None
         )
 
+        logger.info("Done! All preparation done.")
+
     def train(self):
+        logger.info("Start training...")
         
         metric_acc = evaluate.load("accuracy")
 
@@ -251,6 +285,8 @@ class MNTPTrainSuite(TrainSuite):
             preds, labels = preds[mask], labels[mask]
             return metric_acc.compute(predictions=preds, references=labels)
 
+        logger.info("Initializing trainer...")
+
         trainer = MNTPTrainer(
             model=self.model,
             args=self.train_args,
@@ -265,6 +301,8 @@ class MNTPTrainSuite(TrainSuite):
         trainer.add_callback(
             StopTrainCallback(after_step=1000))
         
+        logger.info("Trainer initialized.\nStart training...")
+        
         # ==== Training ====
         train_result = trainer.train()
         trainer.save_model()
@@ -274,7 +312,11 @@ class MNTPTrainSuite(TrainSuite):
         trainer.save_metrics("train", metrics)
         trainer.save_state()
 
+        logger.info("Done! Model saved.")
+
         # ==== Evaluation ====
+        logger.info("Start evaluating...")
+
         metrics = trainer.evaluate()
 
         # Inv prob.
@@ -283,6 +325,8 @@ class MNTPTrainSuite(TrainSuite):
 
         trainer.log_metrics("eval", metrics)
         trainer.save_metrics("eval", metrics)
+
+        logger.info("Done! Metrics saved.")
     
     def _get_model_copy(self):
         return copy(self.model)
@@ -292,10 +336,7 @@ class MNTPTrainSuite(TrainSuite):
 
 
 if __name__ == "__main__":
-    config_dir = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)),
-        "..", "configs"
-    )
+    config_dir = os.path.join(THIS_FILE_DIR, "..", "configs")
 
     mntp_train_suite = MNTPTrainSuite(config_path=config_dir)
     mntp_train_suite.train()
