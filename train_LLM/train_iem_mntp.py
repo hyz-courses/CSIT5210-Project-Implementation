@@ -143,10 +143,13 @@ class MNTPTrainSuite(TrainSuite):
         self.data_args = DataArgs(**_data_args)
         self.model_args = ModelArgs(**_model_args)
 
+        if self.train_args.gradient_checkpointing:
+            self.train_args.gradient_checkpointing_kwargs = {"use_reentrant": False}
+
         logger.info("Arguments loaded. Checking if dataset exists...")
 
         # 0.2 Dataset files
-        dataset_path = self.data_args.dataset_name
+        dataset_path = os.path.join(THIS_FILE_DIR, "..", self.data_args.dataset_name)
         self._check_exist(dataset_path, "MNTP dataset", "run data_process.py")
 
         logger.info("Dataset exists, and loaded.")
@@ -161,8 +164,11 @@ class MNTPTrainSuite(TrainSuite):
 
         logger.info("Loading model config...")
 
+        model_name_or_path = os.path.join(
+            THIS_FILE_DIR, "..", self.model_args.model_name_or_path)
+
         self.config = AutoConfig.from_pretrained(
-            self.model_args.model_name_or_path,
+            model_name_or_path,
             trust_remote_code=self.model_args.trust_remote_code
         )
 
@@ -170,7 +176,7 @@ class MNTPTrainSuite(TrainSuite):
 
         # ===== 2. Tokenizer =====
         self.tokenizer: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(
-            self.model_args.model_name_or_path,
+            model_name_or_path,
             trust_remote_code=self.model_args.trust_remote_code,
             use_fast=True
         )
@@ -190,8 +196,6 @@ class MNTPTrainSuite(TrainSuite):
             "GemmaConfig": GemmaBiForMNTP,
             "Qwen2Config": Qwen2BiForMNTP,
         }[self.config.__class__.__name__]
-
-        model_name_or_path = self.model_args.model_name_or_path
 
         model = model_class.from_pretrained(
             model_name_or_path,
@@ -234,7 +238,7 @@ class MNTPTrainSuite(TrainSuite):
                 lambda examples: self.tokenizer(
                     [
                         line for line in examples["text"]
-                        if len(line) > 0 and not line.isspce()
+                        if len(line) > 0 and not line.isspace()
                     ],
                     padding= (
                         "max_length" 
@@ -271,7 +275,7 @@ class MNTPTrainSuite(TrainSuite):
         def preprocess_logits_for_metrics(
                 logits: Union[
                     Tensor, 
-                    Tuple[Tensor, ...]]) -> Tensor:
+                    Tuple[Tensor, ...]], label) -> Tensor:
             if isinstance(logits, tuple):
                 logits = logits[0]
             return logits.argmax(dim=-1)
@@ -320,7 +324,11 @@ class MNTPTrainSuite(TrainSuite):
         metrics = trainer.evaluate()
 
         # Inv prob.
-        perplexity = np.exp(metrics["eval_loss"])
+        # perplexity = np.exp(metrics["eval_loss"])
+        try:
+            perplexity = np.exp(metrics["eval_loss"])
+        except OverflowError:
+            perplexity = float("inf")
         metrics["perplexity"] = perplexity
 
         trainer.log_metrics("eval", metrics)

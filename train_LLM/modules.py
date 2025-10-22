@@ -34,7 +34,7 @@ import pandas as pd
 from tqdm import tqdm
 
 from torch.utils.data import Dataset as TorchDataset
-from transformers import AutoTokenizer, PreTrainedTokenizerBase
+from transformers import PreTrainedTokenizerBase
 from datasets import Dataset as HFDataset
 
 
