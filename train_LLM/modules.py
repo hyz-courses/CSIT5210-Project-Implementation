@@ -34,7 +34,7 @@ import pandas as pd
 from tqdm import tqdm
 
 from torch.utils.data import Dataset as TorchDataset
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, PreTrainedTokenizerBase
 from datasets import Dataset as HFDataset
 
 
@@ -45,7 +45,7 @@ class Tokenizer:
     from a pretrained model.
     """
 
-    def __init__(self, tokenizer: AutoTokenizer):
+    def __init__(self, tokenizer: PreTrainedTokenizerBase):
         self.tokenizer = tokenizer
         self.bos_id: int = self.tokenizer.bos_token_id  #type: ignore
         self.eos_id: int = self.tokenizer.eos_token_id  #type: ignore
@@ -130,7 +130,7 @@ class DatasetSuite(TorchDataset):
     """
     
     def __init__(self, csv_file: str, 
-                 tokenizer: AutoTokenizer, 
+                 tokenizer: PreTrainedTokenizerBase, 
                  max_len=2048, sample=-1, 
                  is_test = False, seed=0):
         random.seed(seed)

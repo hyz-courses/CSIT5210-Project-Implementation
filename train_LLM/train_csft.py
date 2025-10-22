@@ -14,6 +14,8 @@ import torch
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
+    PreTrainedTokenizerBase,
+
     Trainer,
     TrainingArguments,
     DataCollatorForSeq2Seq,
@@ -101,7 +103,7 @@ class CSFTTrainSuite(TrainSuite):
             'nitializing tokenizer '
             f'from pretrained {self.trainarg["base_model_path"]}...')
 
-        self.tokenizer = AutoTokenizer.from_pretrained(
+        self.tokenizer: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(
             pretrained_model_name_or_path=self.trainarg['base_model_path'],
             trust_remote_code=True,
         )
