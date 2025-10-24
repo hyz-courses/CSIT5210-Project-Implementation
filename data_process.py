@@ -7,6 +7,7 @@ CSIT5210 - Data Mining and Knowledge Discovery
 
 # Basics
 import os
+import ast
 import json
 import math
 from typing import List, Callable, TypeVar, Generic, Tuple, Optional, DefaultDict
@@ -594,13 +595,20 @@ def mix_dataset(categories: List[str]):
     CSVLoader(category='AmazonMix', phase='grained', usage='test').store(obj=all_test)
     JsonLoader(category='AmazonMix', phase='grained', usage='meta').store(obj=stat)
 
+
+    all_together = pd.concat([all_train, all_valid, all_test])
+    mix_titleset = set()
+    for _, row in all_together.iterrows():
+        mix_titleset.add(row['new_item_title'])
+        history_item_titles = ast.literal_eval(row["history_item_titles"])
+        mix_titleset.update(history_item_titles)
+    TxtLoader(category='AmazonMix', phase='grained', usage='titles').store(obj=list(mix_titleset))
+
     logger.info(
         "Mixed dataset saved!\n"
         f"Records: train {len(all_train)}, valid {len(all_valid)}, test {len(all_test)}."
         "Saving meta...."
     )
-
-    
 
 
 def upload_dataset(categories: List[str]):

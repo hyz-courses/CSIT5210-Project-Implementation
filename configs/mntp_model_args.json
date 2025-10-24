@@ -1,0 +1,6 @@
+{
+  "model_name_or_path": "output/Qwen2-0.5B-CSFT-AmazonMix-CSIT5210G1/checkpoint-10000",
+  "torch_dtype": "bfloat16",
+  "attn_implementation": "flash_attention_2",
+  "trust_remote_code": true
+}
