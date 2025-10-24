@@ -13,6 +13,7 @@ logs/*
 
 # Large Files
 data/*
+data_archives
 output
 wandb
 

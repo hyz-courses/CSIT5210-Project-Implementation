@@ -21,16 +21,20 @@ on this class to increase readability and re-usability.
 See the docstring for knowing more about its usage.
 """
 
-
+import os
 import random
+import json
+import ast
 
-from typing import List, Tuple, Dict, Union
+from typing import cast, List, Tuple, Dict, Union
+from abc import ABC, abstractmethod
+from loguru._logger import Logger
 
 import pandas as pd
 from tqdm import tqdm
 
 from torch.utils.data import Dataset as TorchDataset
-from transformers import AutoTokenizer
+from transformers import PreTrainedTokenizerBase
 from datasets import Dataset as HFDataset
 
 
@@ -41,7 +45,7 @@ class Tokenizer:
     from a pretrained model.
     """
 
-    def __init__(self, tokenizer: AutoTokenizer):
+    def __init__(self, tokenizer: PreTrainedTokenizerBase):
         self.tokenizer = tokenizer
         self.bos_id: int = self.tokenizer.bos_token_id  #type: ignore
         self.eos_id: int = self.tokenizer.eos_token_id  #type: ignore
@@ -126,7 +130,7 @@ class DatasetSuite(TorchDataset):
     """
     
     def __init__(self, csv_file: str, 
-                 tokenizer: AutoTokenizer, 
+                 tokenizer: PreTrainedTokenizerBase, 
                  max_len=2048, sample=-1, 
                  is_test = False, seed=0):
         random.seed(seed)
@@ -134,8 +138,8 @@ class DatasetSuite(TorchDataset):
         self.data = pd.read_csv(csv_file)
 
         if not is_test and sample > 0:
-                self.data = self.data.sample(
-                    sample, random_state=seed)
+            self.data = self.data.sample(
+                sample, random_state=seed)
 
         self.tokenizer = Tokenizer(tokenizer)
         self.test = is_test
@@ -165,8 +169,9 @@ class DatasetSuite(TorchDataset):
             Tuple[str, str]: A list of data -> ground-truth pairs.
         """
 
-        history_item_titles: List[str] = eval(
-            row['history_item_titles']) # json.loads will fail here with '
+        # json.loads will fail here with '
+        history_item_titles: List[str] = ast.literal_eval(
+            row['history_item_titles']) 
 
         assert isinstance(history_item_titles, list)
         
@@ -251,3 +256,70 @@ class DatasetSuite(TorchDataset):
         return HFDataset.from_dict({
             k: [v[k] for v in self.encoded_data]
             for k in self.encoded_data[0].keys()})
+    
+
+class TrainSuite(ABC):
+    """
+    The abstract base class for all training suites.
+    All training suites should inherit from this class
+    and implement the abstract methods.
+    """
+
+    def __init__(self, _logger):
+        self.logger = cast(Logger, _logger)
+
+    def _load_config(self, path: str) -> dict:
+        """
+        Load configuration from a .json file.
+        Parameters:
+            config_path (str):
+                Path to the .json file.
+        Returns:
+            dict:
+                Configuration dictionary.
+        """
+
+        with open(path, "r", encoding="utf-8") as f:
+            config = json.load(f)
+            f.close()
+        return config
+
+    def _check_exist(self, path: str, what: str, how: str):
+        """
+        Check whether a key file is exist.
+        Parameters:
+            path (str): 
+                The path of the key file.
+            what (str): 
+                The name of the key file.
+            how (str): 
+                How to get the key file.
+        """
+        if os.path.exists(path):
+            return
+        
+        self.logger.error(
+            f'[CSIT5210 Error]: \n\n{what} does not exist! '
+            f'Missing {path}. '
+            f'Did you {how}?\n\n')
+        raise FileNotFoundError(
+            f'Base model {path} does not exist.')
+
+    @abstractmethod
+    def _get_model_copy(self):
+        """
+        The method to get a copy of the model.
+        """
+
+    @abstractmethod
+    def train(self):
+        """
+        The method to train the model.
+        """
+
+    @abstractmethod
+    def save(self):
+        """
+        The method to save the model.
+        """
+    

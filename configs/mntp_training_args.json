@@ -1,0 +1,14 @@
+{
+  "per_device_train_batch_size": 32,
+  "per_device_eval_batch_size": 32,
+  "gradient_accumulation_steps": 1,
+  "do_train": true,
+  "do_eval": true,
+  "overwrite_output_dir": true,
+  "output_dir": "/home/yhuangiy/code/CSIT5210-Project-Implementation/output/iem_stage1/Qwen2-0.5B-AmazonMix6-CSFT",
+  "evaluation_strategy": "steps",
+  "eval_steps": 100,
+  "save_steps": 100,
+  "gradient_checkpointing": true,
+  "seed": 42
+}
