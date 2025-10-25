@@ -1,0 +1,21 @@
+{
+    "per_device_train_batch_size": 256,
+    "per_device_eval_batch_size": 256,
+    "gradient_accumulation_steps": 1,
+    "do_train": true,
+    "overwrite_output_dir": true,
+    "output_dir": "output/iem_stage2/Qwen2-0.5B-AmazonMix6-CSFT",
+    "gradient_checkpointing": true,
+    "seed": 42,
+
+    "remove_unused_columns": false,
+    "learning_rate": 2e-4,
+    "num_train_epochs": 5,
+    "warmup_steps": 300,
+    "disable_tqdm": false,
+    "logging_steps": 1,
+    "max_grad_norm": 1.0,
+    
+    "save_only_model": false,
+    "save_steps": 100
+}

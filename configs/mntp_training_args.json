@@ -5,7 +5,7 @@
   "do_train": true,
   "do_eval": true,
   "overwrite_output_dir": true,
-  "output_dir": "/home/yhuangiy/code/CSIT5210-Project-Implementation/output/iem_stage1/Qwen2-0.5B-AmazonMix6-CSFT",
+  "output_dir": "output/iem_stage1/Qwen2-0.5B-CSFT-AmazonMix-CSIT5210G1",
   "evaluation_strategy": "steps",
   "eval_steps": 100,
   "save_steps": 100,
