@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, List, Union
 from dataclasses import dataclass
 
 @dataclass(init=True)
@@ -30,3 +30,21 @@ class DataArgs:
     streaming: Optional[bool] = False
 
     overwrite_cache: Optional[bool] = True
+
+
+@dataclass(init=True)
+class DataSample:
+    id_: int
+    query: str
+    positive: str
+    negative: str = None
+    task_name: str = None
+    aug_query: str = None
+
+
+@dataclass(init=True)
+class SentenceExample:
+    guid: str = ""
+    label: Union[int, float] = 0
+    texts: List[str]
+    
