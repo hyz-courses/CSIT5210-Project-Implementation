@@ -32,12 +32,12 @@ from loguru import logger
 
 import torch
 from torch import Tensor
-from torch.nn.functional import normalize
 from torch.utils.data import IterableDataset
 from transformers import (
     TrainingArguments, set_seed, Trainer,
     PreTrainedTokenizerBase)
 from llm2vec import LLM2Vec
+from llm2vec.loss import HardNegativeNLLLoss
 from accelerate import Accelerator
 
 from train_LLM.data_classes import (
@@ -96,40 +96,14 @@ class ItemTitleDataset(IterableDataset):
         )
     
     def __iter__(self):
-        return iter(self.data_samples)
-    
-
-class InfoNCEHN:
-    """
-    InfoNCE loss with hard negatives for contrasive learning.
-    Modified from source code for single-gpu.
-    """
-    
-    def __init__(self):
-        pass
-
-    def _cos_sim(self, n1: Tensor, n2: Tensor) -> Tensor:
-        assert isinstance(n1, Tensor) and isinstance(n2, Tensor)
-
-        n1_, n2_ = [normalize(x) for x in [n1, n2]]
-
-        return torch.mm(n1_, n2_.transpose(0, 1))
-
-    def __call__(
-            self, 
-            query: Tensor, 
-            docreps_pos: Tensor, 
-            docreps_neg: Optional[Tensor] = None):
-
-        if docreps_neg is None:
-            docreps_neg = docreps_pos[:0, :]
-    
-        # Only one GPU
-        docreps = torch.cat([docreps_pos, docreps_neg], dim=0)
-        scores = self._cos_sim(query, docreps) * 20.0
-        labels = torch.tensor(range(len(scores)), dtype=torch.long, device=scores.device)
-
-        return torch.nn.CrossEntropyLoss()(scores, labels)
+        sentence_examples = [
+            SentenceExample(
+                texts=[sample.query, sample.positive],
+                label=1.0
+            )
+            for sample in self.data_samples
+        ]
+        return iter(sentence_examples)
     
 
 class SentenceCollator:
@@ -194,9 +168,11 @@ class SimCSETrainer(Trainer):
         
         features, _ = inputs # unsupervised
         query, doc_pos = [self.model(x) for x in features[:2]]
-        doc_neg = None if len(features) <= 2 else self.model(features[2])
+        doc_neg = None if len(features) <= 2 else cast(Tensor, self.model(features[2]))
 
-        loss = InfoNCEHN()(query, doc_pos, doc_neg)
+        # Need to bypass pylint due to non-proper writing in llm2vec source code.
+        loss = HardNegativeNLLLoss(scale=50.0)(
+            q_reps=query, d_reps_pos=doc_pos, d_reps_neg=doc_neg) #type: ignore
         
         if return_outputs:
             output = torch.cat(
@@ -271,7 +247,6 @@ class SimCSETrainSuite(TrainSuite):
             attention_dropout=0.2
         )
 
-        # pylint: disable=no-member
         for param in cast(torch.nn.Module, self.model.model).parameters():
             param.requires_grad = True
 
@@ -286,7 +261,7 @@ class SimCSETrainSuite(TrainSuite):
             data_collator=SentenceCollator(self.model),
             tokenizer=cast(PreTrainedTokenizerBase, self.tokenizer))
     
-        trainer.add_callback(StopTrainAfterStep(self.train_args.max_steps))
+        trainer.add_callback(StopTrainAfterStep(after_step=1000))
 
         trainer.train()
 

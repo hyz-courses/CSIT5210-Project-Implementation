@@ -1,8 +1,27 @@
+"""
+CSIT5210 - Data Mining and Knowledge Discovery
+@author: HUANG, Yanzhen
+@date: Oct. 22, 2025
+@description: Dataclasses for CSFT and IEM.
+
+@reference:
+
+https://github.com/HappyPointer/LLM2Rec/blob/main/llm2rec/dataset.py
+
+(See full citation in README)
+"""
+
+
 from typing import Optional, List, Union
 from dataclasses import dataclass
 
+
 @dataclass(init=True)
 class ModelArgs:
+    """
+    Runtime arguments for model class initialization
+    and weights loading.
+    """
     model_name_or_path: str
     torch_dtype: str
     attn_implementation: str
@@ -16,6 +35,9 @@ class ModelArgs:
     
 @dataclass(init=True)
 class DataArgs:
+    """
+    Runtime arguments for dataset processing.
+    """
 
     dataset_name: Optional[str] = None
     dataset_file_path: Optional[str] = None
@@ -34,17 +56,26 @@ class DataArgs:
 
 @dataclass(init=True)
 class DataSample:
+    """
+    Data sample for contrastive learning.
+    Contains a query, a positive sample, and an optional negative sample.
+    """
     id_: int
     query: str
     positive: str
-    negative: str = None
-    task_name: str = None
-    aug_query: str = None
+    negative: Optional[str] = None
+    task_name: Optional[str] = None
+    aug_query: Optional[str] = None
 
 
 @dataclass(init=True)
 class SentenceExample:
+    """
+    Sentence example for contrastive learning.
+    Contains a query and a positive sample.
+    """
+    texts: List[str]
     guid: str = ""
     label: Union[int, float] = 0
-    texts: List[str]
+    
     
