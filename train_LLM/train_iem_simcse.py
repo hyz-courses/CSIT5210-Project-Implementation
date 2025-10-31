@@ -286,7 +286,7 @@ class SimCSETrainSuite(TrainSuite):
             data_collator=SentenceCollator(self.model),
             tokenizer=cast(PreTrainedTokenizerBase, self.tokenizer))
     
-        trainer.add_callback(StopTrainAfterStep(self.train_args.max_steps))
+        trainer.add_callback(StopTrainAfterStep(after_step=1000))
 
         trainer.train()
 
