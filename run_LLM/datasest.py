@@ -15,9 +15,10 @@ class IDRecDataset(Dataset):
     where each item is represented by an ID.
     """
 
-    def __init__(self, max_len: int, category: str):
+    def __init__(self, max_len: int, category: str, usage: str):
         self.category = category
         self.max_len = max_len
+        self.usage = usage
         self.raw_data = self.load_data()
     
     def load_data(self):
@@ -36,7 +37,7 @@ class IDRecDataset(Dataset):
         df = CSVLoader(
             category=self.category,
             phase="grained",
-            usage="train",
+            usage=self.usage,
             limit=172747,
             project_root=project_root
         ).load()
@@ -84,3 +85,31 @@ class IDRecDataset(Dataset):
             "labels": torch.tensor(new_item_id, dtype=torch.long),
             "seq_lengths": len(history_item_ids)
         }
+
+
+class IDRecDatasets:
+    def __init__(self, categories: List[str]):
+        self.categories = categories
+        self.train_dataset, self.valid_dataset, self.test_dataset = self.load_data_allcat()
+    
+    def load_data_allcat(self):
+        train_dataset = None
+        valid_dataset = None
+        test_dataset = None
+        for category in self.categories:
+            if train_dataset is None:
+                train_dataset = IDRecDataset(category=category, max_len=10, usage="train")
+            else:
+                train_dataset += IDRecDataset(category=category, max_len=10, usage="train")
+
+            if valid_dataset is None:
+                valid_dataset = IDRecDataset(category=category, max_len=10, usage="valid")
+            else:
+                valid_dataset += IDRecDataset(category=category, max_len=10, usage="valid")
+
+            if test_dataset is None:
+                test_dataset = IDRecDataset(category=category, max_len=10, usage="test")
+            else:
+                test_dataset += IDRecDataset(category=category, max_len=10, usage="test")
+    
+        return train_dataset, valid_dataset, test_dataset
