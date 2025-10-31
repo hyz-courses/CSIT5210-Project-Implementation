@@ -1,6 +1,30 @@
 # CSIT5210 Project Implementation (Group 1)
 
-## Citations
+# Run Instructions
+
+## 0. Preparation
+
+### 0.1 Environment
+
+...
+
+### 0.2 Large Files
+
+Login to your huggingface account. Then, run the following two commands to download trained models to `./output` and dataset to `./data`.
+
+Trained Models
+
+```bash
+python -m hf --pull --local ./output --repoid YzHuangYanzhen/CSIT5210-output --repotype model
+```
+
+Datasets
+
+```bash
+python -m hf --pull --local ./data --repoid YzHuangYanzhen/CSIT5210-data --repotype model
+```
+
+# Citations
 
 LLM2Rec: LLM2Rec: Large Language Models Are Powerful Embedding Models for Sequential Recommendation
 
