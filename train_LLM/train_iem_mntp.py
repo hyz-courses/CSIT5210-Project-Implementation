@@ -133,6 +133,12 @@ class MNTPTrainSuite(TrainSuite):
         if self.train_args.gradient_checkpointing:
             self.train_args.gradient_checkpointing_kwargs = {"use_reentrant": False}
 
+        assert (
+            self.data_args.max_seq_length is not None and 
+            self.data_args.dataset_name is not None and
+            self.data_args.mlm_probability is not None
+            )
+
         logger.info("Arguments loaded. Checking if dataset exists...")
 
         # 0.2 Dataset files
@@ -219,7 +225,7 @@ class MNTPTrainSuite(TrainSuite):
         raw_datasets['train'] = split_datasets["train"]
         raw_datasets['train'] = raw_datasets['train'].shuffle(seed=self.train_args.seed)
         raw_datasets['validation'] = split_datasets["test"]
-        
+
         with self.train_args.main_process_first():
             tokenized_datasets = raw_datasets.map(
                 lambda examples: self.tokenizer(
@@ -233,7 +239,7 @@ class MNTPTrainSuite(TrainSuite):
                         else False),
                     truncation=True,
                     max_length=min(
-                        self.data_args.max_seq_length, 
+                        cast(int, self.data_args.max_seq_length), 
                         self.tokenizer.model_max_length),
                     return_special_tokens_mask=True,
                 ),

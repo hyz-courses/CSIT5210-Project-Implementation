@@ -33,8 +33,10 @@ from loguru import logger
 import torch
 from torch import Tensor
 from torch.nn.functional import normalize
-from torch.utils.data import Dataset
-from transformers import TrainingArguments, set_seed, Trainer
+from torch.utils.data import IterableDataset
+from transformers import (
+    TrainingArguments, set_seed, Trainer,
+    PreTrainedTokenizerBase)
 from llm2vec import LLM2Vec
 from accelerate import Accelerator
 
@@ -54,7 +56,7 @@ logger = bind_logger(logger,
                      ))
 
 
-class ItemTitleDataset(Dataset):
+class ItemTitleDataset(IterableDataset):
     """
     Dataset of lines of item titles.
     """
@@ -117,10 +119,12 @@ class InfoNCEHN:
             self, 
             query: Tensor, 
             docreps_pos: Tensor, 
-            docreps_neg: Tensor):
+            docreps_neg: Optional[Tensor] = None):
+
+        if docreps_neg is None:
+            docreps_neg = docreps_pos[:0, :]
     
         # Only one GPU
-
         docreps = torch.cat([docreps_pos, docreps_neg], dim=0)
         scores = self._cos_sim(query, docreps) * 20.0
         labels = torch.tensor(range(len(scores)), dtype=torch.long, device=scores.device)
@@ -232,6 +236,11 @@ class SimCSETrainSuite(TrainSuite):
         self.data_args = DataArgs(**_data_args)
         self.model_args = ModelArgs(**_model_args)
 
+        assert (
+            self.data_args.dataset_file_path is not None and
+            self.model_args.bidirectional is not None
+        )
+
         # Training
         set_seed(self.train_args.seed)
 
@@ -262,7 +271,8 @@ class SimCSETrainSuite(TrainSuite):
             attention_dropout=0.2
         )
 
-        for param in self.model.model.parameters():
+        # pylint: disable=no-member
+        for param in cast(torch.nn.Module, self.model.model).parameters():
             param.requires_grad = True
 
         self.tokenizer = self.model.tokenizer
@@ -272,9 +282,9 @@ class SimCSETrainSuite(TrainSuite):
         trainer = SimCSETrainer(
             model=self.model,
             args=self.train_args,
-            train_dataset=list(self.train_dataset),
+            train_dataset=self.train_dataset,
             data_collator=SentenceCollator(self.model),
-            tokenizer=self.tokenizer)
+            tokenizer=cast(PreTrainedTokenizerBase, self.tokenizer))
     
         trainer.add_callback(StopTrainAfterStep(self.train_args.max_steps))
 
