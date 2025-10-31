@@ -34,7 +34,7 @@ import pandas as pd
 from tqdm import tqdm
 
 from torch.utils.data import Dataset as TorchDataset
-from transformers import PreTrainedTokenizerBase
+from transformers import PreTrainedTokenizerBase, TrainerCallback
 from datasets import Dataset as HFDataset
 
 
@@ -322,4 +322,18 @@ class TrainSuite(ABC):
         """
         The method to save the model.
         """
+
+
+class StopTrainAfterStep(TrainerCallback):
+    """
+    The callback class for stopping training
+    after a certain #. of steps.
+    (Inherited from paper's source code.)
+    """
+
+    def __init__(self, after_step: int):
+        self.after_step = after_step
     
+    def on_step_end(self, args, state, control, **kwargs):
+        if state.global_step >= self.after_step:
+            control.should_training_stop = True
