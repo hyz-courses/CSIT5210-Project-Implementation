@@ -56,6 +56,7 @@ class CategoryLoader(ABC, Generic[T]):
         phase: str,
         usage: str,
         limit: Optional[int] = None,
+        project_root: Optional[str] = None
     ):
         self.ext = ext
         self.category = category
@@ -63,6 +64,7 @@ class CategoryLoader(ABC, Generic[T]):
         self.phase = phase
         self.type = usage
         self.limit = limit
+        self.project_root = project_root if project_root is not None else "."
 
         if limit and limit < 0:
             message = (
@@ -95,7 +97,7 @@ class CategoryLoader(ABC, Generic[T]):
         if self.type != "":
             file_name = f"{self.type}_{file_name}"
 
-        file_path = os.path.join("data", self.phase, self.category, file_name)
+        file_path = os.path.join(self.project_root, "data", self.phase, self.category, file_name)
 
         if not file_path.endswith(f".{self.ext}"):
             message = (
@@ -122,7 +124,7 @@ class CategoryLoader(ABC, Generic[T]):
                 The function to apply to the object before storing.
         """
 
-        base_path = f"data/{self.phase}/{self.category}"
+        base_path = os.path.join(self.project_root, f"data/{self.phase}/{self.category}")
         file_path = os.path.join(base_path, f"{self.type}_{self.category}.{self.ext}")
         
         if not os.path.exists(base_path):
@@ -163,10 +165,15 @@ class JsonlLoader(CategoryLoader[List[dict]]):
     """
 
     def __init__(
-        self, category: str, phase: str, usage: str = "", limit: Optional[int] = None
+        self, category: str, phase: str, 
+        usage: str = "", limit: Optional[int] = None,
+        project_root: Optional[str] = None
     ):
         super().__init__(
-            category=category, ext="jsonl", phase=phase, usage=usage, limit=limit
+            category=category, 
+            ext="jsonl", phase=phase, 
+            usage=usage, limit=limit,
+            project_root=project_root
         )
 
     def _load(self, file_path, func: Callable = lambda x: x) -> List[dict]:
@@ -208,11 +215,16 @@ class JsonLoader(CategoryLoader[dict]):
     """
 
     def __init__(
-        self, category: str, phase: str, usage: str = "", limit: Optional[int] = None
+        self, category: str, 
+        phase: str, usage: str = "", 
+        limit: Optional[int] = None,
+        project_root: Optional[str] = None
     ):
         super().__init__(
-            category=category, ext="json", phase=phase, usage=usage, limit=limit
-        )
+            category=category, 
+            ext="json", phase=phase, 
+            usage=usage, limit=limit,
+            project_root=project_root)
 
     def _load(self, file_path, func: Callable = lambda x: x) -> dict:
         with open(file_path, 'r', encoding='utf-8') as f:
@@ -246,11 +258,15 @@ class CSVLoader(CategoryLoader[pd.DataFrame]):
     """
 
     def __init__(
-        self, category: str, phase: str, usage: str = "", limit: Optional[int] = None
+        self, category: str, phase: str, 
+        usage: str = "", limit: Optional[int] = None,
+        project_root: Optional[str] = None
     ):
         super().__init__(
-            category=category, ext="csv", phase=phase, usage=usage, limit=limit
-        )
+            category=category, 
+            ext="csv", phase=phase, 
+            usage=usage, limit=limit,
+            project_root=project_root)
 
     def _load(self, file_path, func: Callable = lambda x: x) -> pd.DataFrame:
         df = pd.read_csv(
@@ -284,10 +300,15 @@ class TxtLoader(CategoryLoader[List[str]]):
     """
         
     def __init__(
-        self, category: str, phase: str, usage: str = "", limit: Optional[int] = None
+        self, category: str, phase: str, 
+        usage: str = "", limit: Optional[int] = None,
+        project_root: Optional[str] = None 
     ):
         super().__init__(
-            category=category, ext="txt", phase=phase, usage=usage, limit=limit
+            category=category, 
+            ext="txt", phase=phase, 
+            usage=usage, limit=limit,
+            project_root=project_root
         )
 
     def _load(self, file_path, func: Callable = lambda x: x) -> List[str]:

@@ -6,6 +6,7 @@
     "peft_model_name_or_path": null,
     "bidirectional": true,
     "max_seq_length": 512,
+    "trust_remote_code": true,
 
     "pooling_mode": "mean"
 }
