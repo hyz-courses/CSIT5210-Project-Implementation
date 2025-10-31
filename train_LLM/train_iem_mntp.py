@@ -36,8 +36,7 @@ from transformers import (
     
     Trainer,
     TrainingArguments,
-    DataCollatorForLanguageModeling,
-    TrainerCallback)
+    DataCollatorForLanguageModeling)
 from llm2vec.models import (
     MistralBiForMNTP,
     LlamaBiForMNTP,
@@ -45,7 +44,7 @@ from llm2vec.models import (
     Qwen2BiForMNTP,
 )
 
-from train_LLM.modules import TrainSuite
+from train_LLM.modules import TrainSuite, StopTrainAfterStep
 from train_LLM.data_classes import DataArgs, ModelArgs
 from utils.logs import bind_logger
 
@@ -74,9 +73,11 @@ class MNTPTrainer(Trainer):
         self.label_names = ["labels"]
         super().__init__(*args, **kwargs)
     
-    def _save(self, output_dir: Optional[str] = None, state_dict=None):
-        # If we are executing this function, we are the process zero, so we don't check for that.
+    def _save(self, output_dir: Optional[str] = None, state_dict=None): # pylint: disable=unused-argument
+
         output_dir = output_dir if output_dir is not None else self.args.output_dir
+        output_dir = os.path.join(THIS_FILE_DIR, "..", output_dir)
+        
         os.makedirs(output_dir, exist_ok=True)
 
         # Ensure that the model is of the correct type
@@ -89,21 +90,6 @@ class MNTPTrainer(Trainer):
 
         # Train arguments saving for re-productability.
         torch.save(self.args, os.path.join(output_dir, "training_args.bin"))
-
-
-class StopTrainCallback(TrainerCallback):
-    """
-    The callback class for stopping training
-    after a certain #. of steps.
-    (Inherited from paper's source code.)
-    """
-    
-    def __init__(self, after_step: int):
-        self.after_step = after_step
-
-    def on_step_end(self, args, state, control, **kwargs):
-        if state.global_step >= self.after_step:
-            control.should_training_stop = True
 
 
 class MNTPTrainSuite(TrainSuite):
@@ -146,6 +132,12 @@ class MNTPTrainSuite(TrainSuite):
 
         if self.train_args.gradient_checkpointing:
             self.train_args.gradient_checkpointing_kwargs = {"use_reentrant": False}
+
+        assert (
+            self.data_args.max_seq_length is not None and 
+            self.data_args.dataset_name is not None and
+            self.data_args.mlm_probability is not None
+            )
 
         logger.info("Arguments loaded. Checking if dataset exists...")
 
@@ -233,7 +225,7 @@ class MNTPTrainSuite(TrainSuite):
         raw_datasets['train'] = split_datasets["train"]
         raw_datasets['train'] = raw_datasets['train'].shuffle(seed=self.train_args.seed)
         raw_datasets['validation'] = split_datasets["test"]
-        
+
         with self.train_args.main_process_first():
             tokenized_datasets = raw_datasets.map(
                 lambda examples: self.tokenizer(
@@ -247,7 +239,7 @@ class MNTPTrainSuite(TrainSuite):
                         else False),
                     truncation=True,
                     max_length=min(
-                        self.data_args.max_seq_length, 
+                        cast(int, self.data_args.max_seq_length), 
                         self.tokenizer.model_max_length),
                     return_special_tokens_mask=True,
                 ),
@@ -276,7 +268,7 @@ class MNTPTrainSuite(TrainSuite):
         def preprocess_logits_for_metrics(
                 logits: Union[
                     Tensor, 
-                    Tuple[Tensor, ...]], label) -> Tensor:
+                    Tuple[Tensor, ...]], label) -> Tensor: #pylint: disable=unused-argument
             if isinstance(logits, tuple):
                 logits = logits[0]
             return logits.argmax(dim=-1)
@@ -304,7 +296,7 @@ class MNTPTrainSuite(TrainSuite):
         )
 
         trainer.add_callback(
-            StopTrainCallback(after_step=1000))
+            StopTrainAfterStep(after_step=1000))
         
         logger.info("Trainer initialized.\nStart training...")
         
