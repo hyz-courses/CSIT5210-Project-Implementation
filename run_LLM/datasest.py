@@ -1,7 +1,7 @@
 import os
 import ast
 
-from typing import cast, List
+from typing import cast, List, Optional, Tuple
 
 import torch
 from torch.utils.data import Dataset
@@ -54,7 +54,7 @@ class IDRecDataset(Dataset):
 
         return sequences
     
-    def __add__(self, another_idrec_dataset: 'IDRecDataset') -> 'IDRecDataset':
+    def __add__(self, another_idrec_dataset: Optional['IDRecDataset']) -> 'IDRecDataset':
         """
         Concat the current dataset with another.
 
@@ -64,6 +64,9 @@ class IDRecDataset(Dataset):
         Returns:
             IDRecDataset: The concatenated dataset.
         """
+
+        if another_idrec_dataset is None:
+            return self
 
         assert (
             hasattr(another_idrec_dataset, "raw_data") and
@@ -88,28 +91,29 @@ class IDRecDataset(Dataset):
 
 
 class IDRecDatasets:
+    """
+    A merged ID datset for all categories
+    provided in init.
+    """
+    
     def __init__(self, categories: List[str]):
         self.categories = categories
         self.train_dataset, self.valid_dataset, self.test_dataset = self.load_data_allcat()
     
-    def load_data_allcat(self):
+    def load_data_allcat(self) -> Tuple[
+        IDRecDataset, IDRecDataset, IDRecDataset
+    ]:
+        """
+        Load the ID data for all categories.
+        """
+        assert len(self.categories) > 0
+
         train_dataset = None
         valid_dataset = None
         test_dataset = None
         for category in self.categories:
-            if train_dataset is None:
-                train_dataset = IDRecDataset(category=category, max_len=10, usage="train")
-            else:
-                train_dataset += IDRecDataset(category=category, max_len=10, usage="train")
-
-            if valid_dataset is None:
-                valid_dataset = IDRecDataset(category=category, max_len=10, usage="valid")
-            else:
-                valid_dataset += IDRecDataset(category=category, max_len=10, usage="valid")
-
-            if test_dataset is None:
-                test_dataset = IDRecDataset(category=category, max_len=10, usage="test")
-            else:
-                test_dataset += IDRecDataset(category=category, max_len=10, usage="test")
+            train_dataset += IDRecDataset(category=category, max_len=10, usage="train")
+            valid_dataset += IDRecDataset(category=category, max_len=10, usage="valid")
+            test_dataset += IDRecDataset(category=category, max_len=10, usage="test")
     
         return train_dataset, valid_dataset, test_dataset
