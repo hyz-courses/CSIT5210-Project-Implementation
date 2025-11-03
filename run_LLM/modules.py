@@ -21,7 +21,7 @@ class Evaluator:
     
     def _calc_pos_index(
             self, preds: torch.Tensor, 
-            labels: torch.Tensor) -> torch.BoolTensor:
+            labels: torch.Tensor) -> torch.Tensor:
         
         """
         For a batch of users, do the following:
@@ -177,3 +177,5 @@ class Evaluator:
                 f"recall@{k}": recall_at_k,
                 f"ndcg@{k}": ndcg_at_k
             })
+
+        return results

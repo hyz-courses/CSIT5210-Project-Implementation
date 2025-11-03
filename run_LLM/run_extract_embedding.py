@@ -20,7 +20,7 @@ logger = bind_logger(_logger,
 def extract_category_embedding(
         category: str,
         model_path: str,
-        peft_model_path: str,
+        peft_model_path: Optional[str],
         batch_size: int,
         bidirectional: bool,
         instruction: Optional[str] = None):
@@ -60,7 +60,7 @@ def extract_category_embedding(
         bidirectional=bidirectional)
     
     item_embeddings = model.encode(
-        prompts, batch_size=batch_size, 
+        list(prompts), batch_size=batch_size, 
         convert_to="numpy")
     
     item_embeddings = cast(np.ndarray, item_embeddings)

@@ -1,7 +1,7 @@
 import os
 import json
 from typing import (
-    cast, get_args, List, Dict, 
+    cast, get_args, List, Dict, Type,
     Union, Optional, Literal, Protocol)
 from dataclasses import dataclass, asdict, fields
 
@@ -13,7 +13,7 @@ from tqdm import trange
 # LLM
 from peft import PeftModel
 from transformers import (
-    AutoModel, AutoTokenizer,
+    AutoTokenizer,
     AutoConfig,
     PreTrainedModel, PreTrainedTokenizer,
     PretrainedConfig,
@@ -34,7 +34,7 @@ from llm2vec.models import (
 # Type definitions for linter type check.
 
 LLM = Union[
-    AutoModel,
+    # AutoModel,
     PreTrainedModel,
     MistralBiModel,
     LlamaBiModel,
@@ -51,7 +51,7 @@ LLMConfig = Union[
     Qwen2Config,
 ]
 
-model_name_map: Dict[str, LLM] = {
+model_name_map: Dict[str, Type[LLM]] = {
     "Mistral": MistralBiModel,
     "Llama": LlamaBiModel,
     "Gemma": GemmaBiModel,
@@ -120,7 +120,7 @@ def pooling_function_factory(
             Take a mean over all the token embeddings. 
             """
             
-            seq_len_list = features["attention_mask"].sum(dim=1)
+            seq_len_list = cast(torch.Tensor, features["attention_mask"]).sum(dim=1)
             
             return torch.stack(
                 [
@@ -136,7 +136,7 @@ def pooling_function_factory(
                 last_hidden_states: torch.Tensor,
                 **kwargs) -> torch.Tensor:
             
-            seq_len_list = features["attention_mask"].sum(dim=1)
+            seq_len_list = cast(torch.Tensor, features["attention_mask"]).sum(dim=1)
             
             batch_size, length, _ = last_hidden_states.shape
 
@@ -147,6 +147,8 @@ def pooling_function_factory(
             for i, seq_len in enumerate(seq_len_list):
                 if seq_len <= 0:
                     continue
+
+                seq_len = cast(int, seq_len)
 
                 token_weights[i, -seq_len:] = torch.arange(seq_len) + 1
                 token_weights[i] /= torch.clamp(
@@ -197,7 +199,7 @@ class LLM2Vec(torch.nn.Module):
 
     def __init__(
         self, model: LLM,
-        tokenizer: AutoTokenizer,
+        tokenizer: PreTrainedTokenizer,
         pooling_mode: str = "mean",
         max_length: int = 512,
         doc_max_length: int = 400,
@@ -207,7 +209,7 @@ class LLM2Vec(torch.nn.Module):
         super().__init__()
         self.model: LLM = model
         self.tokenizer: PreTrainedTokenizer = tokenizer
-        self.config: PretrainedConfig = model.config
+        self.config: PretrainedConfig = cast(PretrainedConfig, model.config)
 
         # Encoder Args
         self.pooling_mode = pooling_mode
@@ -321,7 +323,7 @@ class LLM2Vec(torch.nn.Module):
             )
         
         text_tk = tokenize(text)
-        len_text_tk = len(text_tk["input_ids"][0]) # num. of tokens
+        len_text_tk = len(cast(torch.Tensor, text_tk["input_ids"])[0]) # num. of tokens
 
         if len_text_tk < self.doc_max_length:
             return formatter.format(instruction, text)
@@ -335,7 +337,7 @@ class LLM2Vec(torch.nn.Module):
             mid = (left + right) // 2
             candidate_text = " ".join(words[:mid])
             candidate_tk = tokenize(candidate_text)
-            len_candidate_tk = len(candidate_tk["input_ids"][0])
+            len_candidate_tk = len(cast(torch.Tensor, candidate_tk["input_ids"])[0])
 
             if len_candidate_tk <= self.doc_max_length:
                 best_text = candidate_text
@@ -414,10 +416,10 @@ class LLM2Vec(torch.nn.Module):
             )
 
             # Mask out answers in instruction-text strings.
-            e_m = torch.zeros_like(it_emb["attention_mask"][i])
-            if len(t_emb["input_ids"][0]) > 0:
-                e_m[-len(t_emb["input_ids"][0]) :] = torch.ones(
-                    len(t_emb["input_ids"][0]))
+            e_m = torch.zeros_like(cast(torch.Tensor, it_emb["attention_mask"])[i])
+            if len(cast(torch.Tensor, t_emb["input_ids"])[0]) > 0:
+                e_m[-len(cast(torch.Tensor, t_emb["input_ids"])[0]) :] = torch.ones(
+                    len(cast(torch.Tensor, t_emb["input_ids"])[0]))
             
             if embed_mask is None:
                 embed_mask = e_m.unsqueeze(0)
@@ -465,9 +467,10 @@ class LLM2Vec(torch.nn.Module):
         basemodel_autoconfig = cast(LLMConfig, basemodel_autoconfig)
 
         if not bidirectional:
-            model_class = AutoModel
+            # model_class = AutoModel
+            raise ValueError("Must use bidirectional!!")
         else:
-            model_class: LLM = model_name_map[
+            model_class: Type[LLM] = model_name_map[
                 basemodel_autoconfig.__class__.__name__.replace("Config", "")
             ]
         
@@ -500,13 +503,13 @@ class LLM2Vec(torch.nn.Module):
             # config.json and adapter
             # are in the same dir
             model = PeftModel.from_pretrained(model, base_model_name_or_path)
-            model = model.merge_and_unload()
+            model = model.merge_and_unload() #type: ignore
         elif peft_model_name_or_path is not None:
             # otherwise, manually provide
             # adapter path
             model = PeftModel.from_pretrained(model, peft_model_name_or_path)
             if merge_peft:
-                model = model.merge_and_unload()
+                model = model.merge_and_unload() #type: ignore
 
         # Update model config with llm2vec_config.json
         config_file: str = os.path.join(
@@ -521,7 +524,7 @@ class LLM2Vec(torch.nn.Module):
 
         new_config.update(encoder_args.to_dict())
         
-        return cls(model=model, tokenizer=tokenizer, **new_config)
+        return cls(model=model, tokenizer=tokenizer, **new_config) #type: ignore
 
 
     def forward(self, sentence_feature: BatchEncoding) -> torch.Tensor:
@@ -548,7 +551,14 @@ class LLM2Vec(torch.nn.Module):
         })
 
         if self.skip_instruction:
-            assert(sentence_feature["attention_mask"].shape == sentence_feature["embed_mask"].shape)
+            if (
+                cast(torch.Tensor, 
+                     sentence_feature["attention_mask"]).shape 
+                     !=
+                cast(torch.Tensor, 
+                     sentence_feature["embed_mask"]).shape):
+                raise ValueError("")
+            
             sentence_feature["attention_mask"] = sentence_feature["embed_mask"]
 
         return self.pooling_function(
@@ -557,9 +567,9 @@ class LLM2Vec(torch.nn.Module):
             bos_token_id=self.tokenizer.bos_token_id)
 
     def encode(
-            self, sentences: Union[str, list],
+            self, _sentences: Union[str, list],
             batch_size: int = 32,
-            convert_to: str = ConvertOptions,
+            convert_to: ConvertOptions = "numpy",
             device: Optional[str] = None,
         ) -> Union[torch.Tensor, np.ndarray]:
 
@@ -578,34 +588,35 @@ class LLM2Vec(torch.nn.Module):
             device = "cuda" if torch.cuda.is_available() else "cpu"
 
         # Unify param. type
-        if isinstance(sentences, str):
-            sentences = [["", sentences]]
-        elif (hasattr(sentences, "__iter__")
-              and hasattr(sentences, "__getitem__")
-              and isinstance(sentences[0], str)):
-            if isinstance(sentences[-1], int):
-                sentences = [[sentences]]
+        if isinstance(_sentences, str):
+            sentences = [["", _sentences]]
+        elif (hasattr(_sentences, "__iter__")
+              and hasattr(_sentences, "__getitem__")
+              and isinstance(_sentences[0], str)):
+            if isinstance(_sentences[-1], int):
+                sentences = [[_sentences]]
             else:
-                sentences = [["", s] for s in sentences]
+                sentences = [["", s] for s in _sentences]
         else:
             raise ValueError("Invalid input type.")
 
         # Splice instruction and text.
-        sentences: List[str] = [self._splice_instruction(
-            instruction=s[0], text=s[1]
+        # TODO: Further check type here. str?
+        sentences_: List[str] = [self._splice_instruction(
+            instruction=str(s[0]), text=str(s[1])
         ) for s in sentences]
 
         # Sort sentences by length DESC.
-        sent_idx_desc = np.argsort([-self._txtlen(s) for s in sentences])
-        sentences: List[str] = [sentences[i] for i in sent_idx_desc]
+        sent_idx_desc = np.argsort([-self._txtlen(s) for s in sentences_])
+        sentences_: List[str] = [sentences_[i] for i in sent_idx_desc]
 
         self.eval()
         self.to(device)
 
-        embedding_list: List[torch.Tensor] = []
+        _embedding_list: List[torch.Tensor] = []
 
-        for start in trange(0, len(sentences), batch_size):
-            sentences_batch = sentences[start:start+batch_size]
+        for start in trange(0, len(sentences_), batch_size):
+            sentences_batch = sentences_[start:start+batch_size]
 
             seasoned_batch: List[str] = [
                 self._seasoning(s) for s in sentences_batch]
@@ -615,17 +626,17 @@ class LLM2Vec(torch.nn.Module):
             
             for key in features:
                 if isinstance(features[key], torch.Tensor):
-                    features[key] = features[key].to(device)
+                    features[key] = cast(torch.Tensor, features[key]).to(device)
 
             with torch.no_grad():
                 # Sentence embedding
                 emb = self.forward(features)
                 emb = emb.detach()
                 emb = emb.cpu()
-                embedding_list.append(emb)
+                _embedding_list.append(emb)
         
         # Collect sentence embeddings
-        embedding_list = torch.cat(embedding_list, dim=0)
+        embedding_list = torch.cat(_embedding_list, dim=0)
         embedding_list = embedding_list[np.argsort(sent_idx_desc)]
         embedding_list = embedding_list.to(torch.float32)
 
@@ -651,7 +662,7 @@ class LLM2Vec(torch.nn.Module):
         """
         
         if isinstance(self.model, PeftModel) and merge_before_save:
-            self.model = self.model.merge_and_unload()
+            self.model = self.model.merge_and_unload() #type: ignore
             if hasattr(self.model, "_hf_peft_config_loaded"):
                 setattr(self.model, "_hf_peft_config_loaded", False)
 
@@ -671,7 +682,7 @@ class LLM2Vec(torch.nn.Module):
         
 def llm2vec_encoder_factory(
         base_model_name_or_path: str,
-        peft_model_name_or_path: str,
+        peft_model_name_or_path: Optional[str],
         bidirectional: bool) -> LLM2Vec:
     
     """
