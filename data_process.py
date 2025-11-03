@@ -15,6 +15,7 @@ from abc import ABC, abstractmethod
 from datasets import Dataset, DatasetDict
 
 # Data processing
+import numpy as np
 import pandas as pd
 
 # Console logs
@@ -334,6 +335,42 @@ class TxtLoader(CategoryLoader[List[str]]):
             f.close()
 
 
+class NpyLoader(CategoryLoader[np.ndarray]):
+    """
+    Loads raw dataset in .npy format from a
+    specific category.
+
+    Parameters:
+        category (str):
+            The category of the dataset.
+            E.g., "Video_Games", "Arts_Crafts_and_Sewing", etc.
+        phase (str):
+            The phase of the dataset.
+            E.g., "raw", "grained".
+        usage (str):
+            The usage of the dataset.
+            E.g., "meat", "train", "valid", "test".
+    """
+
+    def __init__(
+        self, category: str, phase: str, 
+        usage: str = "", limit: Optional[int] = None,
+        project_root: Optional[str] = None 
+    ):
+        super().__init__(
+            category=category, 
+            ext="npy", phase=phase, 
+            usage=usage, limit=limit,
+            project_root=project_root
+        )
+
+    def _load(self, file_path, func: Callable = lambda x: x) -> np.ndarray:
+        return np.load(file_path)
+
+    def _store(self, obj: np.ndarray, file_path, func: Callable = lambda x: x) -> None:
+        np.save(file_path, obj)
+
+
 def load_raw_data(category: str):
     """
     Load key contents of review and meta.
@@ -361,7 +398,8 @@ def load_raw_data(category: str):
     }
 
     title_itemid_map = {
-        title: i for i, title in enumerate(parentasin_title_map.values())
+        # Reserve 0 for null obj
+        title: i + 1 for i, title in enumerate(parentasin_title_map.values())
     }
 
     df_user_interact = CSVLoader(
@@ -549,6 +587,7 @@ def grain_dataset(categories: List[str]):
         CSVLoader(category=category, phase='grained', usage='valid').store(obj=df_valid)
         CSVLoader(category=category, phase='grained', usage='test').store(obj=df_test)
         TxtLoader(category=category, phase='grained', usage='titles').store(obj=list(set_title))
+        JsonLoader(category=category, phase='downstream', usage='title2id').store(obj=title_id_map)
 
 
 def mix_dataset(categories: List[str]):

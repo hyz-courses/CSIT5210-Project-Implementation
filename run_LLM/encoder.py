@@ -577,7 +577,8 @@ class LLM2Vec(torch.nn.Module):
         # Unify param. type
         if isinstance(sentences, str):
             sentences = [["", sentences]]
-        elif (isinstance(sentences, list) 
+        elif (hasattr(sentences, "__iter__")
+              and hasattr(sentences, "__getitem__")
               and isinstance(sentences[0], str)):
             if isinstance(sentences[-1], int):
                 sentences = [[sentences]]
@@ -664,21 +665,28 @@ class LLM2Vec(torch.nn.Module):
                 json.dump(llm2vec_config, f, indent=4)
                 f.close()
 
-# class LLM2VecEncoder:
-#     def __init__(
-#             self, model_path: str, 
-#             peft_model_name_or_path: str, 
-#             bidirectional: bool):
         
-#         config = {
-#             "base_model_name_or_path": model_path,
-#             "peft_model_name_or_path": peft_model_name_or_path,
-#             "device_map": "cuda" if torch.cuda.is_available() else "cpu",
-#             "torch_dtype": torch.bfloat16,
-#             "use_auth_token": os.environ.get("HUGGINGFACE_HUB_TOKEN"),
-#             "enable_bidirectional": bidirectional
-#         }
+def llm2vec_encoder_factory(
+        base_model_name_or_path: str,
+        peft_model_name_or_path: str,
+        bidirectional: bool) -> LLM2Vec:
+    
+    """
+    Encoder factory for LLM2Vec.
+    """
 
-#         if bidirectional:
-#             config["pooling_mode"]="eos_token"
-        
+    config = {
+        "base_model_name_or_path": base_model_name_or_path,
+        "peft_model_name_or_path": peft_model_name_or_path,
+        "device_map": "cuda" if torch.cuda.is_available() else "cpu",
+        "torch_dtype": torch.bfloat16,
+        "use_auth_token": os.environ.get("HUGGINGFACE_HUB_TOKEN"),
+    }
+
+    if not bidirectional:
+        config.update({
+            "enable_bidirectional": False,
+            "pooling_mode": "eos_token"
+        })
+
+    return LLM2Vec.from_pretrained(**config)
