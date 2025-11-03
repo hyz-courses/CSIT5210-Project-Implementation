@@ -42,7 +42,7 @@ def extract_category_embedding(
         raise ValueError(
             "Item ID should not be 0, as 0 is reserved for NULL object.")
 
-    item_titles = ["NULL"] + title2id.keys()
+    item_titles = ["NULL"] + list(title2id.keys())
     item_titles = np.array(item_titles)
 
     if instruction is not None:

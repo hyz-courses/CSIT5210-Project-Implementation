@@ -3,7 +3,7 @@ import json
 from typing import (
     cast, get_args, List, Dict, 
     Union, Optional, Literal, Protocol)
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, fields
 
 # Tools
 import numpy as np
@@ -74,10 +74,10 @@ class EncoderArgs:
     Encoder arguments.
     """
     
-    pooling_mode: Optional[str] = None
-    max_length: Optional[int] = None
-    doc_max_length: Optional[int] = None
-    skip_instruction: Optional[bool] = None
+    pooling_mode: Optional[str] = "mean"
+    max_length: Optional[int] = 512
+    doc_max_length: Optional[int] = 400
+    skip_instruction: Optional[bool] = False
 
     def to_dict(self) -> dict:
         """
@@ -424,9 +424,6 @@ class LLM2Vec(torch.nn.Module):
             else:
                 embed_mask = torch.cat(
                     [embed_mask, e_m.unsqueeze(0)], dim=0)
-        
-            assert e_m.shape == cast(
-                torch.Tensor, it_emb["attention_mask"]).shape
 
         it_emb["embed_mask"] = embed_mask
 
@@ -446,7 +443,12 @@ class LLM2Vec(torch.nn.Module):
         """
 
         # Encoder args
-        encoder_args = EncoderArgs(**kwargs)
+        encoder_arg_fields = [field.name for field in fields(EncoderArgs)]
+        encoder_kwargs = {k: v for k, v in kwargs.items() 
+                          if k in encoder_arg_fields}
+        model_kwargs = {k: v for k, v in kwargs.items() 
+                          if k not in encoder_arg_fields}
+        encoder_args = EncoderArgs(**encoder_kwargs)
         
         # Tokenizer 
         tokenizer = AutoTokenizer.from_pretrained(
@@ -471,7 +473,7 @@ class LLM2Vec(torch.nn.Module):
         
         model = model_class.from_pretrained(
             base_model_name_or_path, 
-            **encoder_args.to_dict()
+            **model_kwargs
         )
 
         # Sync the model's stored path with the actual path.
@@ -546,6 +548,7 @@ class LLM2Vec(torch.nn.Module):
         })
 
         if self.skip_instruction:
+            assert(sentence_feature["attention_mask"].shape == sentence_feature["embed_mask"].shape)
             sentence_feature["attention_mask"] = sentence_feature["embed_mask"]
 
         return self.pooling_function(
