@@ -3,6 +3,8 @@ from dataclasses import dataclass
 
 import torch
 
+from train_LLM.modules import TrainSuite
+
 @dataclass
 class EvaluatorConfig:
     topks: List[int]
@@ -179,3 +181,7 @@ class Evaluator:
             })
 
         return results
+    
+
+class DownstreamTrainSuite(TrainSuite):
+    pass

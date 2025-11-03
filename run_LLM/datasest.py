@@ -3,6 +3,7 @@ import ast
 
 from typing import cast, List, Optional, Tuple
 
+import numpy as np
 import torch
 from torch.utils.data import Dataset
 
@@ -19,7 +20,7 @@ class IDRecDataset(Dataset):
         self.category = category
         self.max_len = max_len
         self.usage = usage
-        self.raw_data = self.load_data()
+        self.raw_data, self.max_item_id = self.load_data()
     
     def load_data(self):
         """
@@ -45,6 +46,8 @@ class IDRecDataset(Dataset):
         history_item_ids_list = df["history_item_ids"]
         new_item_id_list = df["new_item_id"]
 
+        # Merge history item id list and new item id
+        # into a single list.
         sequences = [
             cast(List, ast.literal_eval(history_item_ids)) + [new_item_id]
             for history_item_ids, new_item_id in zip(
@@ -52,7 +55,9 @@ class IDRecDataset(Dataset):
             )
         ]
 
-        return sequences
+        max_item_id = np.max(sequences)
+
+        return sequences, max_item_id
     
     def __add__(self, another_idrec_dataset: Optional['IDRecDataset']) -> 'IDRecDataset':
         """
@@ -74,6 +79,9 @@ class IDRecDataset(Dataset):
         )
         
         self.raw_data += another_idrec_dataset.raw_data
+        self.max_item_id = max(
+            self.max_item_id, 
+            another_idrec_dataset.max_item_id)
         return self
 
     def __getitem__(self, index):
@@ -92,28 +100,31 @@ class IDRecDataset(Dataset):
 
 class IDRecDatasets:
     """
-    A merged ID datset for all categories
-    provided in init.
+    An train, valid and test item-id dataset
+    for a specific category.
     """
     
-    def __init__(self, categories: List[str]):
-        self.categories = categories
-        self.train_dataset, self.valid_dataset, self.test_dataset = self.load_data_allcat()
+    def __init__(self, category: str):
+        self.category = category
+        (self.train_dataset, self.valid_dataset, 
+         self.test_dataset, self.total_item_num, 
+         self.select_pool) = self.get_datasets(category)
     
-    def load_data_allcat(self) -> Tuple[
+    def get_datasets(self, category: str) -> Tuple[
         IDRecDataset, IDRecDataset, IDRecDataset
     ]:
         """
-        Load the ID data for all categories.
+        Load the train, valid and test ID datasets
+        for a specific category, along with some stats.
         """
-        assert len(self.categories) > 0
 
-        train_dataset = None
-        valid_dataset = None
-        test_dataset = None
-        for category in self.categories:
-            train_dataset += IDRecDataset(category=category, max_len=10, usage="train")
-            valid_dataset += IDRecDataset(category=category, max_len=10, usage="valid")
-            test_dataset += IDRecDataset(category=category, max_len=10, usage="test")
-    
-        return train_dataset, valid_dataset, test_dataset
+        train_dataset = IDRecDataset(category=category, max_len=10, usage="train")
+        valid_dataset = IDRecDataset(category=category, max_len=10, usage="valid")
+        test_dataset = IDRecDataset(category=category, max_len=10, usage="test")
+
+        whole_dataset = train_dataset + valid_dataset + test_dataset
+        total_item_num = whole_dataset.max_item_id
+        select_pool = [1, total_item_num + 1]
+
+        return (train_dataset, valid_dataset, 
+                test_dataset, total_item_num, select_pool)
