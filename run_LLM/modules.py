@@ -360,12 +360,12 @@ class DownstreamTrainSuite(TrainSuite):
                 if self.accelerator.is_main_process:
                     # torch.save(self.model.state_dict(), self.save_model_ckpt)
                     self.save()
-                    self.logger.log(
+                    print(
                         f"Checkpoint saved to {self.save_model_ckpt} "
                         f"at epoch {epoch + 1}.")
 
             if epoch + 1 - best_epoch >= self.run_config.patience:
-                self.logger.log(
+                print(
                     f"Stop early at epoch {epoch + 1}.\n"
                     f"Best epoch: {best_epoch}; "
                     f"Best validation score: {best_val_score}")

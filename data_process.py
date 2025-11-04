@@ -440,7 +440,7 @@ def load_raw_data(category: str):
 
 
 def get_5core_ui_list(
-    df_user_interact: pd.DataFrame, parentasin_title_map: dict, title_itemid_map: dict
+    df_user_interact: pd.DataFrame, parentasin_title_map: dict
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, set]:
     """
     Using the raw dataset, build up a list of leave-one-out
@@ -465,6 +465,17 @@ def get_5core_ui_list(
     def __is_invalid(test_str: str) -> bool:
         return (pd.isna(test_str) or test_str == "" or test_str is None)
     
+    def assign_itemid(user_seq_list: List[dict], title_id_map: dict):
+        for seq in user_seq_list:
+            history_item_titles = seq["history_item_titles"]
+            new_item_title = seq["new_item_title"]
+            history_item_ids = [title_id_map[title] for title in history_item_titles]
+            new_item_id = title_id_map[new_item_title]
+            seq.update({
+                "history_item_ids": history_item_ids,
+                "new_item_id": new_item_id
+            })
+
     # Sort the list by user_id, then by timestamp
     # To build up leave-one-out dataset
     df_user_interact.sort_values(["user_id", "timestamp"])
@@ -475,10 +486,12 @@ def get_5core_ui_list(
     )
 
     # Use sequencial item ID over strings
-    df_user_interact["item_id"] = df_user_interact["item_title"].map(title_itemid_map).fillna(0).astype(int)
+    # df_user_interact["item_id"] = df_user_interact["item_title"].map(title_itemid_map).fillna(0).astype(int)
 
     # List out key columns of each user
-    key_concerns = ["parent_asin", "timestamp", "item_title", "item_id"]
+    key_concerns = ["parent_asin", "timestamp", "item_title", 
+                    # "item_id"
+                    ]
 
     # Group users to list the above columns
     user_group = df_user_interact.groupby("user_id")
@@ -496,7 +509,9 @@ def get_5core_ui_list(
 
     for user_id, interaction in user_data.items():
 
-        (parentasin_list, timestamp_list, itemtitle_list, itemid_list) = [
+        (parentasin_list, timestamp_list, itemtitle_list, 
+        #  itemid_list
+         ) = [
             interaction[key_concern] for key_concern in key_concerns
         ]
 
@@ -557,8 +572,8 @@ def get_5core_ui_list(
                     "new_item_asin": parentasin_list[ptr_seq_end],
                     "history_item_titles": itemtitle_list[start:ptr_seq_end][-10:],
                     "new_item_title": itemtitle_list[ptr_seq_end],
-                    "history_item_ids": itemid_list[start:ptr_seq_end][-10:],
-                    "new_item_id": itemid_list[ptr_seq_end],
+                    # "history_item_ids": itemid_list[start:ptr_seq_end][-10:],
+                    # "new_item_id": itemid_list[ptr_seq_end],
                     "new_item_timestamp": timestamp_list[ptr_seq_end],
                 }
 
@@ -580,11 +595,19 @@ def get_5core_ui_list(
         # Record this user's titles
         title_set.update(this_user_title_set)
 
+    # Title set is finalized.
+    unique_titles = list(title_set)
+    title_id_map = {title: index + 1 for index, title in enumerate(unique_titles)}
+
+    assign_itemid(train_list, title_id_map)
+    assign_itemid(valid_list, title_id_map)
+    assign_itemid(test_list, title_id_map)
+
     df_train = pd.DataFrame(train_list)
     df_valid = pd.DataFrame(valid_list)
     df_test = pd.DataFrame(test_list)
 
-    return df_train, df_valid, df_test, title_set
+    return df_train, df_valid, df_test, title_set, title_id_map
 
 
 def grain_dataset(categories: List[str]):
@@ -602,13 +625,12 @@ def grain_dataset(categories: List[str]):
         logger.info(f"Graining category {category} dataset...")
 
         logger.info(f"Loading {category} raw 5-core data...")
-        df_ui, pa_title_map, title_id_map = load_raw_data(category=category)
+        df_ui, pa_title_map, _ = load_raw_data(category=category)
 
         logger.info(f"Graining {category} data...")
-        df_train, df_valid, df_test, set_title = get_5core_ui_list(
+        df_train, df_valid, df_test, set_title, title_id_map = get_5core_ui_list(
             df_user_interact=df_ui,
             parentasin_title_map=pa_title_map,
-            title_itemid_map=title_id_map,
         )
 
         logger.info(f"Saving {category} train, valid and test .csv files...")
@@ -742,4 +764,4 @@ if __name__ == "__main__":
 
     grain_dataset(categories=pretrain_categories + outofdomain_categories)
     mix_dataset(categories=pretrain_categories)
-    upload_dataset(categories=pretrain_categories + outofdomain_categories)
+    # upload_dataset(categories=pretrain_categories + outofdomain_categories)
