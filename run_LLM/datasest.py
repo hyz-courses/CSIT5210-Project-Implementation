@@ -48,14 +48,19 @@ class IDRecDataset(Dataset):
 
         # Merge history item id list and new item id
         # into a single list.
-        sequences = [
-            cast(List, ast.literal_eval(history_item_ids)) + [new_item_id]
-            for history_item_ids, new_item_id in zip(
-                history_item_ids_list, new_item_id_list
-            )
-        ]
 
-        max_item_id = np.max(sequences)
+        sequences = []
+        max_item_id = -1
+
+        for (history_item_ids, new_item_id) in zip(
+            history_item_ids_list, new_item_id_list):
+
+            # Splice history and new into one seq
+            sequence = cast(List, ast.literal_eval(history_item_ids)) + [new_item_id]
+            sequences.append(sequence)
+
+            # This sequence max.
+            max_item_id = np.max([max_item_id, np.max(sequence)])
 
         return sequences, max_item_id
     
@@ -96,6 +101,9 @@ class IDRecDataset(Dataset):
             "labels": torch.tensor(new_item_id, dtype=torch.long),
             "seq_lengths": len(history_item_ids)
         }
+
+    def __len__(self):
+        return len(self.raw_data)
 
 
 class IDRecDatasets:

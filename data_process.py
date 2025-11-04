@@ -10,6 +10,7 @@ import os
 import ast
 import json
 import math
+from collections import OrderedDict
 from typing import List, Callable, TypeVar, Generic, Tuple, Optional, DefaultDict
 from abc import ABC, abstractmethod
 from datasets import Dataset, DatasetDict
@@ -386,6 +387,10 @@ def load_raw_data(category: str):
         parentasin_title_map (List[dict]):
             A map from parent asin to title.
     """
+
+    def __is_invalid(test_str: str) -> bool:
+        return (pd.isna(test_str) or test_str == "" or test_str is None)
+    
     _parentasin_title_map = JsonlLoader(category=category, phase="raw", usage="meta").load(
         func=lambda record: {
             "parent_asin": record["parent_asin"],
@@ -397,10 +402,35 @@ def load_raw_data(category: str):
         record["parent_asin"]: record["title"] for record in _parentasin_title_map
     }
 
-    title_itemid_map = {
-        # Reserve 0 for null obj
-        title: i + 1 for i, title in enumerate(parentasin_title_map.values())
-    }
+    # title_itemid_map = {}
+
+    # for i, title in enumerate(parentasin_title_map.values()):
+    #     if __is_invalid(title):
+    #         title_itemid_map[title] = -1
+    #         continue
+        
+    #     title_itemid_map[title] = i + 1
+
+    # title_itemid_map = OrderedDict(
+    #     sorted(title_itemid_map.items(), key=lambda item: item[1]))
+    
+    # title_itemid_map_ = OrderedDict()
+    
+    # for i, (title, itemid) in enumerate(title_itemid_map.items()):
+    #     if itemid == -1:
+    #         continue
+    #     title_itemid_map_[title] = i + 1
+
+    valid_titles = [
+        title for title in parentasin_title_map.values()
+        if not __is_invalid(title)]
+    
+    valid_titles = sorted(set(valid_titles))
+    
+    title_itemid_map = OrderedDict()
+
+    for i, valid_title in enumerate(valid_titles):
+        title_itemid_map[valid_title] = i + 1
 
     df_user_interact = CSVLoader(
         category=category, phase="raw", usage="", limit=400000
@@ -445,7 +475,7 @@ def get_5core_ui_list(
     )
 
     # Use sequencial item ID over strings
-    df_user_interact["item_id"] = df_user_interact["item_title"].map(title_itemid_map)
+    df_user_interact["item_id"] = df_user_interact["item_title"].map(title_itemid_map).fillna(0).astype(int)
 
     # List out key columns of each user
     key_concerns = ["parent_asin", "timestamp", "item_title", "item_id"]

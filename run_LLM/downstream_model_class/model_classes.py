@@ -26,7 +26,7 @@ class DownstreamModel(nn.Module):
 
     def __init__(self, model_config: DownstreamModelArgs,
                  run_config: DownstreamTrainArgs):
-        super(DownstreamModel, nn.Module).__init__()
+        super().__init__()
         self.model_config = model_config
         self.run_config = run_config
 
@@ -76,7 +76,8 @@ class SASRec(DownstreamModel):
             model_config=model_config,
             run_config=run_config)
         
-        self.config = cast(SASRecModelArgs, self.config)
+        self.config = model_config
+        self.run_config = run_config
 
         assert self.config.adapter_dims[-1] == -1
 
@@ -110,6 +111,12 @@ class SASRec(DownstreamModel):
             )
             nn.init.normal_(item_emb.weight, 0, 1)
             return item_emb
+        
+        # if (pretrained_embs.shape[0] >= self.run_config.item_num + 1):
+        #     self.run_config.item_num = pretrained_embs.shape[0] - 1
+        #     self.run_config.select_pool[-1] = pretrained_embs.shape[0]
+        # else:
+        #     raise ValueError("Emb shape and item num not match.")
         
         assert pretrained_embs.shape[0] == self.run_config.item_num + 1
         
@@ -151,8 +158,11 @@ class SASRec(DownstreamModel):
 
 
     def _get_representation(self, batch: dict):
+
         item_seqs = cast(torch.Tensor, batch["item_seqs"])
         input_embs = self.item_embeddings(item_seqs)
+
+
         input_embs += self.positional_embeddings(
             torch.arange(
                 self.run_config.max_seq_length).to(input_embs.device)

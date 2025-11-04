@@ -44,8 +44,8 @@ class Evaluator:
     
     def __init__(self, evaluator_config: DownstreamTrainArgs):
         self.eos_token = evaluator_config.eos_token
-        self.topks = evaluator_config.topks
-        self.maxk = max(evaluator_config.topks)
+        self.topks = evaluator_config.topk
+        self.maxk = max(evaluator_config.topk)
     
     def _calc_pos_index(
             self, preds: torch.Tensor, 
@@ -317,7 +317,7 @@ class DownstreamTrainSuite(TrainSuite):
             self.run_config.epochs / self.accelerator.num_processes)
 
         best_epoch = -1
-        best_val_score = -np.inf()
+        best_val_score = -1
 
         for epoch in range(n_epochs):
             self.model.train()
@@ -358,7 +358,8 @@ class DownstreamTrainSuite(TrainSuite):
                 best_epoch = epoch + 1
 
                 if self.accelerator.is_main_process:
-                    torch.save(self.model.state_dict(), self.save_model_ckpt)
+                    # torch.save(self.model.state_dict(), self.save_model_ckpt)
+                    self.save()
                     self.logger.log(
                         f"Checkpoint saved to {self.save_model_ckpt} "
                         f"at epoch {epoch + 1}.")
@@ -370,6 +371,13 @@ class DownstreamTrainSuite(TrainSuite):
                     f"Best validation score: {best_val_score}")
                 break
 
+
+    def evaluate(self, loader: DataLoader):
+        """
+        API that exposes internal method.
+        """
+        return self._evaluate(loader)
+
     def end(self):
         """
         End training.
@@ -377,7 +385,10 @@ class DownstreamTrainSuite(TrainSuite):
         self.accelerator.end_training()
 
     def save(self):
-        pass
+        """
+        Save model.
+        """
+        torch.save(self.model.state_dict(), self.save_model_ckpt)
 
 
 class Main:
@@ -412,13 +423,13 @@ class Main:
         ).load()
         pretrained_item_embeddings = torch.tensor(
             _pretrained_item_embeddings, 
-            dypte=torch.float32).to(self.device)
+            dtype=torch.float32).to(self.device)
         
         with self.accelerator.main_process_first():
             model_args = SASRecModelArgs()
             self.model = SASRec(model_args, run_config, pretrained_item_embeddings)
         
-        self.downstream_train_suite = DownstreamTrainSuite(
+        self.train_suite = DownstreamTrainSuite(
             model=self.model, 
             accelerator=self.accelerator, 
             run_config=self.run_config,
@@ -431,3 +442,32 @@ class Main:
                 batch_size=self.run_config.eval_batch_size,
                 shuffle=False)
         )
+
+    def main(self):
+        # Train downstream
+        self.train_suite.train()
+        self.accelerator.wait_for_everyone()
+        self.model = self.accelerator.unwrap_model(self.model)
+
+        # Test downstream
+        self.model = cast(SASRec, self.model)
+        self.model.load_state_dict(torch.load(self.train_suite.save_model_ckpt))
+        self.model, test_dataloader = self.accelerator.prepare(
+            self.model,
+            DataLoader(self.test_dataset, 
+                       batch_size=self.run_config.eval_batch_size,
+                       shuffle=False)
+        )
+
+        self.model = cast(SASRec, self.model)
+        test_dataloader = cast(DataLoader, test_dataloader)
+
+        test_results = self.train_suite.evaluate(test_dataloader)
+        if self.accelerator.is_main_process:
+            for k, v in test_results:
+                self.accelerator.log({f"test/{k}": v})
+
+        # breakpoint()
+
+        self.train_suite.end()
+        return test_results, self.run_config

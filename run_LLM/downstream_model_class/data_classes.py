@@ -1,5 +1,5 @@
 from typing import List
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -8,7 +8,7 @@ class DownstreamTrainArgs:
     Argument configurations for sequential
     recommendation task running.
     """
-    num_proc: 1
+    num_proc: int = 1
     cache_dir: str = "run_LLM/cache/"
     ckpt_dir: str = "output/downstream/ckpt/"
     rand_seed: int = 2024
@@ -27,14 +27,14 @@ class DownstreamTrainArgs:
     eval_interval: int = 5
     patience: int = 20
 
-    topk: List[int] = [5, 10, 20]
+    topk: List[int] = field(default_factory=lambda: [5, 10, 20])
     run_id: str = "CSIT5210-Implementation-G1"
 
     save: bool = True
 
     # Unsettled
     item_num: int = -1
-    select_pool: List[int] = [-1, -1]
+    select_pool: List[int] = field(default_factory=lambda: [-1, -1])
     ext_token_num: int = 0 # extend token number
     eos_token: int = -1
 
@@ -50,7 +50,7 @@ class DownstreamModelArgs:
     layer_num: int = 2
     dropout: float = 0.3
     sample_func: str = "random"
-    adapter_dims: List[int] = [-1]
+    adapter_dims: List[int] = field(default_factory=lambda: [-1])
 
 
 @dataclass
