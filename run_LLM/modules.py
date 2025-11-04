@@ -1,12 +1,14 @@
 import os
 import math
 import hashlib
+from copy import copy
 from datetime import datetime
-from typing import cast, Dict
+from typing import cast, List, Dict
 from collections import defaultdict, OrderedDict
 from dataclasses import asdict
 
 import torch
+import wandb
 import numpy as np
 from tqdm import tqdm
 from torch.optim import AdamW
@@ -15,9 +17,13 @@ from accelerate import Accelerator
 from loguru import logger as _logger
 
 
+from data_process import NpyLoader
 from train_LLM.modules import TrainSuite
-from run_LLM.downstream_model_class.data_classes import DownstreamTrainArgs
-from run_LLM.downstream_model_class.model_classes import DownstreamModel
+from run_LLM.datasest import IDRecDataset, IDRecDatasets
+from run_LLM.downstream_model_class.data_classes import (
+    SASRecModelArgs,
+    DownstreamTrainArgs)
+from run_LLM.downstream_model_class.model_classes import DownstreamModel, SASRec
 from utils.logs import bind_logger
 from utils.reproduce import freeze_random
 
@@ -201,15 +207,16 @@ class Evaluator:
             })
 
         return results
-    
+
 
 class DownstreamTrainSuite(TrainSuite):
     """
     An inheritence of TrainSuite, for downstream tasks.
     """
-    
+
     def __init__(self, 
                  model: DownstreamModel, 
+                 accelerator: Accelerator,
                  run_config: DownstreamTrainArgs,
                  train_loader: DataLoader,
                  valid_loader: DataLoader):
@@ -220,7 +227,7 @@ class DownstreamTrainSuite(TrainSuite):
         self.train_loader = train_loader
         self.valid_loader = valid_loader
 
-        self.accelerator = Accelerator(log_with="wandb")
+        self.accelerator = accelerator
         self.evaluator = Evaluator(run_config)
         self.save_model_ckpt = os.path.join(
             PROJECT_ROOT_DIR, self.run_config.ckpt_dir,
@@ -231,7 +238,10 @@ class DownstreamTrainSuite(TrainSuite):
         self.best_metric = 0
         self.best_epoch = 0
         self.count = 0
-    
+
+    def _get_model_copy(self):
+        return copy(self.model)
+
 
     def _generate_ckpt_filename(self):
         """
@@ -240,14 +250,14 @@ class DownstreamTrainSuite(TrainSuite):
         """
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         md5 = hashlib.md5(str(asdict(self.run_config)).encode(encoding="utf-8")).hexdigest()[:6]
-        return "{}-{}-{}.pth".format(self.run_config.run_id, now, md5)
-    
+        return f"{self.run_config.run_id}-{now}-{md5}.pth"
+
 
     def _evaluate(self, valid_loader: DataLoader):
         """
         Perform one evaluation on the validation set.
         """
-        
+
         self.model.eval()
 
         _summary = defaultdict(list)
@@ -274,7 +284,6 @@ class DownstreamTrainSuite(TrainSuite):
             summary[k] = mean
         
         return summary
-
 
     def train(self):
         """
@@ -367,4 +376,58 @@ class DownstreamTrainSuite(TrainSuite):
         """
         self.accelerator.end_training()
 
+    def save(self):
+        pass
 
+
+class Main:
+    def __init__(
+            self, 
+            run_config: DownstreamTrainArgs, 
+            category: str):
+        
+        self.run_config = run_config
+        
+        freeze_random(run_config.rand_seed)
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        wandb.init(project="CSIT5210-Downstream-SASRec")
+        self.accelerator = Accelerator(log_with="wandb")
+
+        (
+            self.train_dataset, self.valid_dataset, 
+            self.test_dataset, total_item_num, 
+            select_pool) = IDRecDatasets(category).get_datasets()
+        
+        self.run_config.select_pool = select_pool
+        self.run_config.eos_token = total_item_num + 1
+        self.run_config.item_num = total_item_num
+
+        # Load embedding from .npy file
+        _pretrained_item_embeddings = NpyLoader(
+            category=category,
+            phase="downstream",
+            usage="emb",
+            project_root=PROJECT_ROOT_DIR
+        ).load()
+        pretrained_item_embeddings = torch.tensor(
+            _pretrained_item_embeddings, 
+            dypte=torch.float32).to(self.device)
+        
+        with self.accelerator.main_process_first():
+            model_args = SASRecModelArgs()
+            self.model = SASRec(model_args, run_config, pretrained_item_embeddings)
+        
+        self.downstream_train_suite = DownstreamTrainSuite(
+            model=self.model, 
+            accelerator=self.accelerator, 
+            run_config=self.run_config,
+            train_loader = DataLoader(
+                dataset=self.train_dataset, 
+                batch_size=self.run_config.train_batch_size,
+                shuffle=True),
+            valid_loader = DataLoader(
+                dataset=self.valid_dataset, 
+                batch_size=self.run_config.eval_batch_size,
+                shuffle=False)
+        )

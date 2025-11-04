@@ -106,21 +106,19 @@ class IDRecDatasets:
     
     def __init__(self, category: str):
         self.category = category
-        (self.train_dataset, self.valid_dataset, 
-         self.test_dataset, self.total_item_num, 
-         self.select_pool) = self.get_datasets(category)
     
-    def get_datasets(self, category: str) -> Tuple[
-        IDRecDataset, IDRecDataset, IDRecDataset
+    def get_datasets(self) -> Tuple[
+        IDRecDataset, IDRecDataset, IDRecDataset,
+        int, List[int]
     ]:
         """
         Load the train, valid and test ID datasets
         for a specific category, along with some stats.
         """
 
-        train_dataset = IDRecDataset(category=category, max_len=10, usage="train")
-        valid_dataset = IDRecDataset(category=category, max_len=10, usage="valid")
-        test_dataset = IDRecDataset(category=category, max_len=10, usage="test")
+        train_dataset = IDRecDataset(category=self.category, max_len=10, usage="train")
+        valid_dataset = IDRecDataset(category=self.category, max_len=10, usage="valid")
+        test_dataset = IDRecDataset(category=self.category, max_len=10, usage="test")
 
         whole_dataset = train_dataset + valid_dataset + test_dataset
         total_item_num = whole_dataset.max_item_id

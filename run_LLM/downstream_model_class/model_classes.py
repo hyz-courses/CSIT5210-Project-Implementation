@@ -4,7 +4,6 @@ from abc import abstractmethod
 import torch
 from torch import nn
 from torch.nn.modules.loss import _Loss
-
 from run_LLM.downstream_model_class.data_classes import (
     DownstreamModelArgs, 
     SASRecModelArgs, 
@@ -31,11 +30,11 @@ class DownstreamModel(nn.Module):
         self.model_config = model_config
         self.run_config = run_config
 
-    @abstractmethod
-    def calculate_loss(self, batch):
-        """
-        Calculate loss.
-        """
+    # @abstractmethod
+    # def calculate_loss(self, batch):
+    #     """
+    #     Calculate loss.
+    #     """
     
     @abstractmethod
     def predict(self, batch, n_return_sequences=1):
@@ -43,11 +42,11 @@ class DownstreamModel(nn.Module):
         Perform prediction.
         """
     
-    @abstractmethod
-    def get_embeddings(self, items):
-        """
-        Obtain model embeddings.
-        """
+    # @abstractmethod
+    # def get_embeddings(self, items):
+    #     """
+    #     Obtain model embeddings.
+    #     """
 
 
 class MyEmbedding(nn.Module):
