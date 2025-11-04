@@ -1,4 +1,4 @@
-from typing import cast, Dict
+from typing import cast, Dict, Optional
 from abc import abstractmethod
 
 import torch
@@ -7,7 +7,7 @@ from torch.nn.modules.loss import _Loss
 from run_LLM.downstream_model_class.data_classes import (
     DownstreamModelArgs, 
     SASRecModelArgs, 
-    # GRU4RecModelArgs,
+    GRU4RecModelArgs,
     DownstreamTrainArgs)
 
 from run_LLM.downstream_model_class.modules import TransformerEncoder
@@ -17,36 +17,6 @@ LOSS_FN_MAP: Dict[str, _Loss] = {
     "bce": nn.BCEWithLogitsLoss(),
     "ce": nn.CrossEntropyLoss()
 }
-
-
-class DownstreamModel(nn.Module):
-    """
-    Generic downstream model class.
-    """
-
-    def __init__(self, model_config: DownstreamModelArgs,
-                 run_config: DownstreamTrainArgs):
-        super().__init__()
-        self.model_config = model_config
-        self.run_config = run_config
-
-    # @abstractmethod
-    # def calculate_loss(self, batch):
-    #     """
-    #     Calculate loss.
-    #     """
-    
-    @abstractmethod
-    def predict(self, batch, n_return_sequences=1):
-        """
-        Perform prediction.
-        """
-    
-    # @abstractmethod
-    # def get_embeddings(self, items):
-    #     """
-    #     Obtain model embeddings.
-    #     """
 
 
 class MyEmbedding(nn.Module):
@@ -64,39 +34,33 @@ class MyEmbedding(nn.Module):
         return self.adapter(self.embedding.weight.data)
 
 
-class SASRec(DownstreamModel):
+class DownstreamModel(nn.Module):
     """
-    SASRec model class.
+    Generic downstream model class.
     """
-    
-    def __init__(self, model_config: SASRecModelArgs, 
+
+    def __init__(self, 
+                 model_config: DownstreamModelArgs,
                  run_config: DownstreamTrainArgs,
-                 pretrained_item_embeddings: torch.Tensor =None):
-        super(SASRec, self).__init__(
-            model_config=model_config,
-            run_config=run_config)
-        
-        self.config = model_config
+                 pretrained_item_embeddings: Optional[torch.Tensor] =None):
+        super().__init__()
+        self.model_config = model_config
         self.run_config = run_config
 
-        assert self.config.adapter_dims[-1] == -1
-
-        self.positional_embeddings = nn.Embedding(
-            num_embeddings=self.run_config.max_seq_length,
-            embedding_dim=self.model_config.hidden_size
-        )
-
+        # Embeddings coming from upstreams...
         self.item_embeddings = self.load_item_emb(
             pretrained_item_embeddings)
-
-        self.emb_dropout = nn.Dropout(self.model_config.dropout)
-        
-        self.transformer_encoder = TransformerEncoder(self.config)
         
         self.loss_fn = nn.CrossEntropyLoss()
 
+        self.emb_dropout = nn.Dropout(self.model_config.dropout)
 
-    def load_item_emb(self, pretrained_embs: torch.Tensor):
+
+    @abstractmethod
+    def _get_representation(self, batch: dict) -> torch.Tensor:
+        ...
+
+    def load_item_emb(self, pretrained_embs: torch.Tensor) -> MyEmbedding:
         """
         Attempt to load pretrained item embeddings.
         If no pretrained item embeddings provided,
@@ -112,12 +76,6 @@ class SASRec(DownstreamModel):
             nn.init.normal_(item_emb.weight, 0, 1)
             return item_emb
         
-        # if (pretrained_embs.shape[0] >= self.run_config.item_num + 1):
-        #     self.run_config.item_num = pretrained_embs.shape[0] - 1
-        #     self.run_config.select_pool[-1] = pretrained_embs.shape[0]
-        # else:
-        #     raise ValueError("Emb shape and item num not match.")
-        
         assert pretrained_embs.shape[0] == self.run_config.item_num + 1
         
         # Reserved for further use.
@@ -129,8 +87,8 @@ class SASRec(DownstreamModel):
             torch.cat([pretrained_embs, ext_emb]), padding_idx=0)
         
         # List of adapter (mlp) hidden sizes.
-        adapter_hidden_sizes = [item_emb.embedding_dim] + self.config.adapter_dims
-        adapter_hidden_sizes[-1] = self.config.hidden_size
+        adapter_hidden_sizes = [item_emb.embedding_dim] + self.model_config.adapter_dims
+        adapter_hidden_sizes[-1] = self.model_config.hidden_size
         
         # Adapter mlp
         item_emb_adapter = nn.Sequential()
@@ -155,33 +113,6 @@ class SASRec(DownstreamModel):
         
         item_emb_ = MyEmbedding(adapter=item_emb_adapter, embedding=item_emb)
         return item_emb_
-
-
-    def _get_representation(self, batch: dict):
-
-        item_seqs = cast(torch.Tensor, batch["item_seqs"])
-        input_embs = self.item_embeddings(item_seqs)
-
-
-        input_embs += self.positional_embeddings(
-            torch.arange(
-                self.run_config.max_seq_length).to(input_embs.device)
-        )
-
-        seq = self.emb_dropout(input_embs)
-        mask = torch.ne(item_seqs, 0).float().to(input_embs.device)
-        mask = self.transformer_encoder.get_attn_mask(mask, bidirectional=False)
-        
-        seq_ = self.transformer_encoder(seq, attention_mask=mask)
-        seq_ = cast(torch.Tensor, seq_)
-
-        output = seq_[-1]  # Last transformer block's output.
-
-        # Get the last item of all sequences in the batch.
-        output = self.transformer_encoder.gather_batch_indices(
-            output, batch["seq_lengths"] - 1)
-        
-        return output
     
     def forward(self, batch: dict):
         """
@@ -210,6 +141,90 @@ class SASRec(DownstreamModel):
         scores = logits[:, s_from:s_to]
         preds = scores.topk(n_return_sequences, dim=-1).indices + s_from
         return preds
+
+
+class SASRec(DownstreamModel):
+    """
+    SASRec model class.
+    """
+    
+    def __init__(self, model_config: SASRecModelArgs, 
+                 run_config: DownstreamTrainArgs,
+                 pretrained_item_embeddings: torch.Tensor =None):
+        super(SASRec, self).__init__(
+            model_config=model_config,
+            run_config=run_config,
+            pretrained_item_embeddings=pretrained_item_embeddings)
+        
+        assert self.model_config.adapter_dims[-1] == -1
+
+        self.positional_embeddings = nn.Embedding(
+            num_embeddings=self.run_config.max_seq_length,
+            embedding_dim=self.model_config.hidden_size
+        )
+
+        self.transformer_encoder = TransformerEncoder(self.model_config)
+        
+        
+    def _get_representation(self, batch: dict):
+
+        item_seqs = cast(torch.Tensor, batch["item_seqs"])
+        input_embs = self.item_embeddings(item_seqs)
+        input_embs = cast(torch.Tensor, input_embs)
+
+        input_embs += self.positional_embeddings(
+            torch.arange(
+                self.run_config.max_seq_length).to(input_embs.device)
+        )
+        input_embs = cast(torch.Tensor, input_embs)
+
+        seq = self.emb_dropout(input_embs)
+        mask = torch.ne(item_seqs, 0).float().to(input_embs.device)
+        mask = self.transformer_encoder.get_attn_mask(mask, bidirectional=False)
+        
+        seq_ = self.transformer_encoder(seq, attention_mask=mask)
+        seq_ = cast(torch.Tensor, seq_)
+
+        output = seq_[-1]  # Last transformer block's output.
+
+        # Get the last item of all sequences in the batch.
+        output = self.transformer_encoder.gather_batch_indices(
+            output, batch["seq_lengths"] - 1)
+        
+        return output
+    
+
+class GRU4Rec(DownstreamModel):
+    """
+    GRU4Rec model class.
+    """
+
+    def __init__(self, model_config: GRU4RecModelArgs, 
+                 run_config: DownstreamTrainArgs,
+                 pretrained_item_embeddings: torch.Tensor =None):
+        super(GRU4Rec, self).__init__(
+            model_config=model_config,
+            run_config=run_config,
+            pretrained_item_embeddings=pretrained_item_embeddings)
+        
+        self.gru = nn.GRU(
+            input_size=self.model_config.hidden_size,
+            hidden_size=self.model_config.hidden_size,
+            num_layers=self.model_config.layer_num,
+            batch_first=True,
+            dropout=self.model_config.dropout
+        )
+
+    def _get_representation(self, batch: dict) -> torch.Tensor:
+        input_embs = self.item_embeddings(cast(torch.Tensor, batch["item_seqs"]))
+        seq = self.emb_dropout(input_embs)
+        mask = torch.ne(batch['item_seqs'], 0).float().unsqueeze(-1).to(input_embs.device)
+        seq *= mask
+        seq, _ = self.gru(seq)
+        output = seq[torch.arange(seq.size(0)), (batch["seq_lengths"] - 1)]
+        return output
+
+
     
 
         

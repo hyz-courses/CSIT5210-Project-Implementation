@@ -21,8 +21,11 @@ from train_LLM.modules import TrainSuite
 from run_LLM.datasest import IDRecDatasets
 from run_LLM.downstream_model_class.data_classes import (
     SASRecModelArgs,
+    GRU4RecModelArgs,
     DownstreamTrainArgs)
-from run_LLM.downstream_model_class.model_classes import DownstreamModel, SASRec
+from run_LLM.downstream_model_class.model_classes import (
+    DownstreamModel, 
+    SASRec, GRU4Rec)
 from utils.logs import bind_logger
 from utils.reproduce import freeze_random
 
@@ -396,18 +399,24 @@ class Main:
     """
     def __init__(
             self, 
+            category: str,
             run_config: DownstreamTrainArgs, 
-            category: str):
+            which_downstream_model: str,):
         
-        logger.info(f"Evaluating Category: {category}.")
+        logger.info(f"Evaluating Category: {category} with {which_downstream_model}.")
         
         self.run_config = run_config
         self.category = category
+        self.which_downstream_model = which_downstream_model
+        run_config.run_id = which_downstream_model
         
         freeze_random(run_config.rand_seed)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        wandb.init(project="CSIT5210-Downstream-SASRec")
+        wandb.init(
+            project=f"CSIT5210-Downstream-{which_downstream_model}",
+            name=run_config.run_id)
+        
         self.accelerator = Accelerator(log_with="wandb")
 
         (
@@ -431,8 +440,15 @@ class Main:
             dtype=torch.float32).to(self.device)
         
         with self.accelerator.main_process_first():
-            model_args = SASRecModelArgs()
-            self.model = SASRec(model_args, run_config, pretrained_item_embeddings)
+            
+            if which_downstream_model == "SASRec":
+                model_args = SASRecModelArgs()
+                self.model = SASRec(model_args, run_config, pretrained_item_embeddings)
+            elif which_downstream_model == "GRU4Rec":
+                model_args = GRU4RecModelArgs()
+                self.model = GRU4Rec(model_args, run_config, pretrained_item_embeddings)
+            else:
+                raise ValueError(f"Unknown downstream model type {which_downstream_model}.")
         
         self.train_suite = DownstreamTrainSuite(
             model=self.model, 
@@ -453,7 +469,7 @@ class Main:
         if JsonLoader(
             category=self.category,
             phase="result",
-            usage="metric",
+            usage=self.which_downstream_model,
             limit=None,
             project_root=PROJECT_ROOT_DIR
         ).exist():
@@ -488,7 +504,7 @@ class Main:
         JsonLoader(
             category=self.category,
             phase="result",
-            usage="metric",
+            usage=self.which_downstream_model,
             project_root=PROJECT_ROOT_DIR
         ).store(obj=test_results)
 

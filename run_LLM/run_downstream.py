@@ -16,5 +16,8 @@ if __name__ == "__main__":
     outofdomain_categories = ["Baby_Products", "Sports_and_Outdoors"]
 
     for cat in pretrain_categories + outofdomain_categories:
-        main_runner = Main(run_config, category=cat)
-        main_runner.main()
+        sasrec_runner = Main(run_config=run_config, category=cat, which_downstream_model="SASRec")
+        sasrec_runner.main()
+
+        gru4rec_runner = Main(run_config=run_config, category=cat, which_downstream_model="GRU4Rec")
+        gru4rec_runner.main()
