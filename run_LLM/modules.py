@@ -3,13 +3,12 @@ import math
 import hashlib
 from copy import copy
 from datetime import datetime
-from typing import cast, List, Dict
+from typing import cast, Dict
 from collections import defaultdict, OrderedDict
 from dataclasses import asdict
 
 import torch
 import wandb
-import numpy as np
 from tqdm import tqdm
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
@@ -17,9 +16,9 @@ from accelerate import Accelerator
 from loguru import logger as _logger
 
 
-from data_process import NpyLoader
+from data_process import NpyLoader, JsonLoader
 from train_LLM.modules import TrainSuite
-from run_LLM.datasest import IDRecDataset, IDRecDatasets
+from run_LLM.datasest import IDRecDatasets
 from run_LLM.downstream_model_class.data_classes import (
     SASRecModelArgs,
     DownstreamTrainArgs)
@@ -360,12 +359,12 @@ class DownstreamTrainSuite(TrainSuite):
                 if self.accelerator.is_main_process:
                     # torch.save(self.model.state_dict(), self.save_model_ckpt)
                     self.save()
-                    print(
+                    logger.info(
                         f"Checkpoint saved to {self.save_model_ckpt} "
                         f"at epoch {epoch + 1}.")
 
             if epoch + 1 - best_epoch >= self.run_config.patience:
-                print(
+                logger.info(
                     f"Stop early at epoch {epoch + 1}.\n"
                     f"Best epoch: {best_epoch}; "
                     f"Best validation score: {best_val_score}")
@@ -392,12 +391,18 @@ class DownstreamTrainSuite(TrainSuite):
 
 
 class Main:
+    """
+    Main running instance.
+    """
     def __init__(
             self, 
             run_config: DownstreamTrainArgs, 
             category: str):
         
+        logger.info(f"Evaluating Category: {category}.")
+        
         self.run_config = run_config
+        self.category = category
         
         freeze_random(run_config.rand_seed)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -444,6 +449,17 @@ class Main:
         )
 
     def main(self):
+
+        if JsonLoader(
+            category=self.category,
+            phase="result",
+            usage="metric",
+            limit=None,
+            project_root=PROJECT_ROOT_DIR
+        ).exist():
+            logger.info(f"Downstream eval results for category {self.category} exists, skip training.")
+            return
+
         # Train downstream
         self.train_suite.train()
         self.accelerator.wait_for_everyone()
@@ -464,10 +480,17 @@ class Main:
 
         test_results = self.train_suite.evaluate(test_dataloader)
         if self.accelerator.is_main_process:
-            for k, v in test_results:
+            for k, v in test_results.items():
                 self.accelerator.log({f"test/{k}": v})
 
         # breakpoint()
+
+        JsonLoader(
+            category=self.category,
+            phase="result",
+            usage="metric",
+            project_root=PROJECT_ROOT_DIR
+        ).store(obj=test_results)
 
         self.train_suite.end()
         return test_results, self.run_config

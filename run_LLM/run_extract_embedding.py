@@ -74,13 +74,23 @@ def extract_category_embedding(
 
     
 if __name__ == "__main__":
+
+    pretrain_categories = [
+        "Video_Games",
+        "Arts_Crafts_and_Sewing",
+        "Movies_and_TV",
+        "Home_and_Kitchen",
+        "Electronics",
+        "Tools_and_Home_Improvement",
+    ]
+
     outofdomain_categories = ["Baby_Products", "Sports_and_Outdoors"]
 
     model_path_checkpoint1000 = os.path.join(
         PROJECT_ROOT_DIR, "output", "iem_stage2", 
         "Qwen2-0.5B-CSFT-AmazonMix-CSIT5210G1", "checkpoint-1000")
 
-    for cat in outofdomain_categories:
+    for cat in pretrain_categories + outofdomain_categories:
         extract_category_embedding(
             category=cat,
             model_path=model_path_checkpoint1000,

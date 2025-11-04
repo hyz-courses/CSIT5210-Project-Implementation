@@ -149,6 +149,18 @@ class CategoryLoader(ABC, Generic[T]):
         logger.info(f"Category {self.category} file saved successfully to {file_path}.")
 
 
+    def exist(self):
+        """
+        Check whether a targeted file exists.
+        """
+        file_name = f"{self.category}.{self.ext}"
+
+        if self.type != "":
+            file_name = f"{self.type}_{file_name}"
+        file_path = os.path.join(self.project_root, "data", self.phase, self.category, file_name)
+        return os.path.exists(file_path)
+
+
 class JsonlLoader(CategoryLoader[List[dict]]):
     """
     Loads raw dataset in .jsonl format from a
