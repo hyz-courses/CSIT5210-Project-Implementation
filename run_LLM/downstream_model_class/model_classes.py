@@ -9,7 +9,7 @@ from run_LLM.downstream_model_class.data_classes import (
     DownstreamModelArgs, 
     SASRecModelArgs, 
     # GRU4RecModelArgs,
-    SeqRecArgs)
+    DownstreamTrainArgs)
 
 from run_LLM.downstream_model_class.modules import TransformerEncoder
 
@@ -26,7 +26,7 @@ class DownstreamModel(nn.Module):
     """
 
     def __init__(self, model_config: DownstreamModelArgs,
-                 run_config: SeqRecArgs):
+                 run_config: DownstreamTrainArgs):
         super(DownstreamModel, nn.Module).__init__()
         self.model_config = model_config
         self.run_config = run_config
@@ -71,7 +71,7 @@ class SASRec(DownstreamModel):
     """
     
     def __init__(self, model_config: SASRecModelArgs, 
-                 run_config: SeqRecArgs,
+                 run_config: DownstreamTrainArgs,
                  pretrained_item_embeddings: torch.Tensor =None):
         super(SASRec, self).__init__(
             model_config=model_config,
@@ -187,6 +187,20 @@ class SASRec(DownstreamModel):
         loss = self.loss_fn(logits, cast(torch.Tensor, batch["labels"]).view(-1))
 
         return {"loss": loss}
+    
+    def predict(self, batch: dict, n_return_sequences: int = 1):
+        """
+        Base on the given sequence, predict the next item.
+        """
+        reps = self._get_representation(batch).view(-1, self.model_config.hidden_size)
+        test_item_emb = self.item_embeddings.weight
+        logits = torch.matmul(reps, test_item_emb.transpose(0, 1))
+
+        # Select
+        s_from, s_to = self.run_config.select_pool
+        scores = logits[:, s_from:s_to]
+        preds = scores.topk(n_return_sequences, dim=-1).indices + s_from
+        return preds
     
 
         

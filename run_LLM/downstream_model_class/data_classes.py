@@ -3,11 +3,16 @@ from dataclasses import dataclass
 
 
 @dataclass
-class SeqRecArgs:
+class DownstreamTrainArgs:
     """
     Argument configurations for sequential
     recommendation task running.
     """
+    num_proc: 1
+    cache_dir: str = "run_LLM/cache/"
+    ckpt_dir: str = "output/downstream/ckpt/"
+    rand_seed: int = 2024
+
     max_seq_length: int = 10
     whiten: bool = False
 
@@ -29,7 +34,9 @@ class SeqRecArgs:
 
     # Unsettled
     item_num: int = -1
+    select_pool: List[int] = [-1, -1]
     ext_token_num: int = 0 # extend token number
+    eos_token: int = -1
 
 
 @dataclass

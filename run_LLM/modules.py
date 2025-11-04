@@ -1,14 +1,34 @@
-from typing import List, Dict
-from dataclasses import dataclass
+import os
+import math
+import hashlib
+from datetime import datetime
+from typing import cast, Dict
+from collections import defaultdict, OrderedDict
+from dataclasses import asdict
 
 import torch
+import numpy as np
+from tqdm import tqdm
+from torch.optim import AdamW
+from torch.utils.data import DataLoader
+from accelerate import Accelerator
+from loguru import logger as _logger
+
 
 from train_LLM.modules import TrainSuite
+from run_LLM.downstream_model_class.data_classes import DownstreamTrainArgs
+from run_LLM.downstream_model_class.model_classes import DownstreamModel
+from utils.logs import bind_logger
+from utils.reproduce import freeze_random
 
-@dataclass
-class EvaluatorConfig:
-    topks: List[int]
-    eos_token: str
+THIS_FILE_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT_DIR = os.path.join(THIS_FILE_DIR, "..")
+
+logger = bind_logger(_logger,
+                     log_path=os.path.join(
+                        PROJECT_ROOT_DIR,
+                        "logs", "downstream.log"
+                     ))
 
 
 class Evaluator:
@@ -16,7 +36,7 @@ class Evaluator:
     An evaluator class.
     """
     
-    def __init__(self, evaluator_config: EvaluatorConfig):
+    def __init__(self, evaluator_config: DownstreamTrainArgs):
         self.eos_token = evaluator_config.eos_token
         self.topks = evaluator_config.topks
         self.maxk = max(evaluator_config.topks)
@@ -184,4 +204,167 @@ class Evaluator:
     
 
 class DownstreamTrainSuite(TrainSuite):
-    pass
+    """
+    An inheritence of TrainSuite, for downstream tasks.
+    """
+    
+    def __init__(self, 
+                 model: DownstreamModel, 
+                 run_config: DownstreamTrainArgs,
+                 train_loader: DataLoader,
+                 valid_loader: DataLoader):
+        super().__init__(_logger=logger)
+        self.run_config = run_config
+        self.model = model
+
+        self.train_loader = train_loader
+        self.valid_loader = valid_loader
+
+        self.accelerator = Accelerator(log_with="wandb")
+        self.evaluator = Evaluator(run_config)
+        self.save_model_ckpt = os.path.join(
+            PROJECT_ROOT_DIR, self.run_config.ckpt_dir,
+            self._generate_ckpt_filename()
+        )
+        os.makedirs(os.path.dirname(self.save_model_ckpt), exist_ok=True)
+
+        self.best_metric = 0
+        self.best_epoch = 0
+        self.count = 0
+    
+
+    def _generate_ckpt_filename(self):
+        """
+        Base on the time, run id and config, generate
+        a unique checkpoint filename.
+        """
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        md5 = hashlib.md5(str(asdict(self.run_config)).encode(encoding="utf-8")).hexdigest()[:6]
+        return "{}-{}-{}.pth".format(self.run_config.run_id, now, md5)
+    
+
+    def _evaluate(self, valid_loader: DataLoader):
+        """
+        Perform one evaluation on the validation set.
+        """
+        
+        self.model.eval()
+
+        _summary = defaultdict(list)
+
+        for batch in tqdm(
+            valid_loader,
+            total=len(valid_loader),
+            desc="DS-Evaluation"
+        ):
+            with torch.no_grad():
+                preds = self.model.predict(
+                    batch, n_return_sequences=self.evaluator.maxk)
+                
+                metrics = self.evaluator.calc(
+                    cast(torch.Tensor, preds), 
+                    cast(torch.Tensor, batch["labels"]))
+                
+                for k, v in metrics.items():
+                    _summary[k].append(v)
+
+        summary = OrderedDict()
+        for k, val_list in _summary.items():
+            mean = torch.cat(val_list).mean().item()
+            summary[k] = mean
+        
+        return summary
+
+
+    def train(self):
+        """
+        Perform training along with validation.
+        Early stop when overfit.
+        """
+        optimizer = AdamW(
+            self.model.parameters(),
+            lr=self.run_config.lr,
+            weight_decay=self.run_config.weight_decay
+        )
+
+        (
+            self.model, optimizer,
+            train_loader, valid_loader
+        ) = self.accelerator.prepare(
+            self.model, optimizer, 
+            self.train_loader, self.valid_loader)
+
+        self.model = cast(DownstreamModel, self.model)
+        optimizer = cast(AdamW, optimizer)
+        train_loader = cast(DataLoader, train_loader)
+        valid_loader = cast(DataLoader, valid_loader)
+
+        self.accelerator.init_trackers(
+            project_name="CSIT5210-Impl-G1",
+            config=asdict(self.run_config)
+        )
+
+        n_epochs: int = math.ceil(
+            self.run_config.epochs / self.accelerator.num_processes)
+
+        best_epoch = -1
+        best_val_score = -np.inf()
+
+        for epoch in range(n_epochs):
+            self.model.train()
+            train_loss = 0.0
+
+            for batch in tqdm(
+                train_loader,
+                total=len(train_loader),
+                desc=f"DS-Train [Epoch {epoch + 1}/{n_epochs}]"
+            ):
+                optimizer.zero_grad()
+                outputs = self.model(batch)
+                loss = cast(torch.Tensor, outputs["loss"])
+                self.accelerator.backward(loss)
+                optimizer.step()
+                train_loss += loss.item()
+
+            self.accelerator.log({
+                "train_loss": train_loss / len(train_loader)
+                }, step=epoch + 1)
+            
+            if (epoch + 1) % self.run_config.eval_interval != 0:
+                continue
+
+            metrics_summary = self._evaluate(valid_loader)
+
+            if self.accelerator.is_main_process:
+                for key in metrics_summary:
+                    self.accelerator.log({
+                        f"validation/{key}": metrics_summary[key]
+                    }, step=epoch + 1)
+
+            # Use recall@20 as main metric
+            recall_at_maxk = metrics_summary[f"recall@{self.evaluator.maxk}"]
+
+            if recall_at_maxk > best_val_score:
+                best_val_score = recall_at_maxk
+                best_epoch = epoch + 1
+
+                if self.accelerator.is_main_process:
+                    torch.save(self.model.state_dict(), self.save_model_ckpt)
+                    self.logger.log(
+                        f"Checkpoint saved to {self.save_model_ckpt} "
+                        f"at epoch {epoch + 1}.")
+
+            if epoch + 1 - best_epoch >= self.run_config.patience:
+                self.logger.log(
+                    f"Stop early at epoch {epoch + 1}.\n"
+                    f"Best epoch: {best_epoch}; "
+                    f"Best validation score: {best_val_score}")
+                break
+
+    def end(self):
+        """
+        End training.
+        """
+        self.accelerator.end_training()
+
+
