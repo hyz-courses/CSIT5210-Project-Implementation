@@ -12,7 +12,8 @@ class DownstreamTrainArgs:
     cache_dir: str = "run_LLM/cache/"
     ckpt_dir: str = "output/downstream/ckpt/"
     rand_seed: int = 2024
-
+    use_pretrained_embedding: bool = False
+    
     max_seq_length: int = 10
     whiten: bool = False
 
