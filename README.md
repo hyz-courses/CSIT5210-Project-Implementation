@@ -21,7 +21,7 @@ python -m hf --pull --local ./output --repoid YzHuangYanzhen/CSIT5210-output --r
 Datasets
 
 ```bash
-python -m hf --pull --local ./data --repoid YzHuangYanzhen/CSIT5210-data --repotype model
+python -m hf --pull --local ./data --repoid YzHuangYanzhen/CSIT5210-data --repotype dataset
 ```
 
 # Citations

@@ -10,11 +10,13 @@ import os
 import ast
 import json
 import math
+from collections import OrderedDict
 from typing import List, Callable, TypeVar, Generic, Tuple, Optional, DefaultDict
 from abc import ABC, abstractmethod
 from datasets import Dataset, DatasetDict
 
 # Data processing
+import numpy as np
 import pandas as pd
 
 # Console logs
@@ -145,6 +147,18 @@ class CategoryLoader(ABC, Generic[T]):
         self._store(obj, file_path, func)
 
         logger.info(f"Category {self.category} file saved successfully to {file_path}.")
+
+
+    def exist(self):
+        """
+        Check whether a targeted file exists.
+        """
+        file_name = f"{self.category}.{self.ext}"
+
+        if self.type != "":
+            file_name = f"{self.type}_{file_name}"
+        file_path = os.path.join(self.project_root, "data", self.phase, self.category, file_name)
+        return os.path.exists(file_path)
 
 
 class JsonlLoader(CategoryLoader[List[dict]]):
@@ -334,6 +348,42 @@ class TxtLoader(CategoryLoader[List[str]]):
             f.close()
 
 
+class NpyLoader(CategoryLoader[np.ndarray]):
+    """
+    Loads raw dataset in .npy format from a
+    specific category.
+
+    Parameters:
+        category (str):
+            The category of the dataset.
+            E.g., "Video_Games", "Arts_Crafts_and_Sewing", etc.
+        phase (str):
+            The phase of the dataset.
+            E.g., "raw", "grained".
+        usage (str):
+            The usage of the dataset.
+            E.g., "meat", "train", "valid", "test".
+    """
+
+    def __init__(
+        self, category: str, phase: str, 
+        usage: str = "", limit: Optional[int] = None,
+        project_root: Optional[str] = None 
+    ):
+        super().__init__(
+            category=category, 
+            ext="npy", phase=phase, 
+            usage=usage, limit=limit,
+            project_root=project_root
+        )
+
+    def _load(self, file_path, func: Callable = lambda x: x) -> np.ndarray:
+        return np.load(file_path)
+
+    def _store(self, obj: np.ndarray, file_path, func: Callable = lambda x: x) -> None:
+        np.save(file_path, obj)
+
+
 def load_raw_data(category: str):
     """
     Load key contents of review and meta.
@@ -349,6 +399,10 @@ def load_raw_data(category: str):
         parentasin_title_map (List[dict]):
             A map from parent asin to title.
     """
+
+    def __is_invalid(test_str: str) -> bool:
+        return (pd.isna(test_str) or test_str == "" or test_str is None)
+    
     _parentasin_title_map = JsonlLoader(category=category, phase="raw", usage="meta").load(
         func=lambda record: {
             "parent_asin": record["parent_asin"],
@@ -360,9 +414,35 @@ def load_raw_data(category: str):
         record["parent_asin"]: record["title"] for record in _parentasin_title_map
     }
 
-    title_itemid_map = {
-        title: i for i, title in enumerate(parentasin_title_map.values())
-    }
+    # title_itemid_map = {}
+
+    # for i, title in enumerate(parentasin_title_map.values()):
+    #     if __is_invalid(title):
+    #         title_itemid_map[title] = -1
+    #         continue
+        
+    #     title_itemid_map[title] = i + 1
+
+    # title_itemid_map = OrderedDict(
+    #     sorted(title_itemid_map.items(), key=lambda item: item[1]))
+    
+    # title_itemid_map_ = OrderedDict()
+    
+    # for i, (title, itemid) in enumerate(title_itemid_map.items()):
+    #     if itemid == -1:
+    #         continue
+    #     title_itemid_map_[title] = i + 1
+
+    valid_titles = [
+        title for title in parentasin_title_map.values()
+        if not __is_invalid(title)]
+    
+    valid_titles = sorted(set(valid_titles))
+    
+    title_itemid_map = OrderedDict()
+
+    for i, valid_title in enumerate(valid_titles):
+        title_itemid_map[valid_title] = i + 1
 
     df_user_interact = CSVLoader(
         category=category, phase="raw", usage="", limit=400000
@@ -372,7 +452,7 @@ def load_raw_data(category: str):
 
 
 def get_5core_ui_list(
-    df_user_interact: pd.DataFrame, parentasin_title_map: dict, title_itemid_map: dict
+    df_user_interact: pd.DataFrame, parentasin_title_map: dict
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, set]:
     """
     Using the raw dataset, build up a list of leave-one-out
@@ -397,6 +477,17 @@ def get_5core_ui_list(
     def __is_invalid(test_str: str) -> bool:
         return (pd.isna(test_str) or test_str == "" or test_str is None)
     
+    def assign_itemid(user_seq_list: List[dict], title_id_map: dict):
+        for seq in user_seq_list:
+            history_item_titles = seq["history_item_titles"]
+            new_item_title = seq["new_item_title"]
+            history_item_ids = [title_id_map[title] for title in history_item_titles]
+            new_item_id = title_id_map[new_item_title]
+            seq.update({
+                "history_item_ids": history_item_ids,
+                "new_item_id": new_item_id
+            })
+
     # Sort the list by user_id, then by timestamp
     # To build up leave-one-out dataset
     df_user_interact.sort_values(["user_id", "timestamp"])
@@ -407,10 +498,12 @@ def get_5core_ui_list(
     )
 
     # Use sequencial item ID over strings
-    df_user_interact["item_id"] = df_user_interact["item_title"].map(title_itemid_map)
+    # df_user_interact["item_id"] = df_user_interact["item_title"].map(title_itemid_map).fillna(0).astype(int)
 
     # List out key columns of each user
-    key_concerns = ["parent_asin", "timestamp", "item_title", "item_id"]
+    key_concerns = ["parent_asin", "timestamp", "item_title", 
+                    # "item_id"
+                    ]
 
     # Group users to list the above columns
     user_group = df_user_interact.groupby("user_id")
@@ -428,7 +521,9 @@ def get_5core_ui_list(
 
     for user_id, interaction in user_data.items():
 
-        (parentasin_list, timestamp_list, itemtitle_list, itemid_list) = [
+        (parentasin_list, timestamp_list, itemtitle_list, 
+        #  itemid_list
+         ) = [
             interaction[key_concern] for key_concern in key_concerns
         ]
 
@@ -489,8 +584,8 @@ def get_5core_ui_list(
                     "new_item_asin": parentasin_list[ptr_seq_end],
                     "history_item_titles": itemtitle_list[start:ptr_seq_end][-10:],
                     "new_item_title": itemtitle_list[ptr_seq_end],
-                    "history_item_ids": itemid_list[start:ptr_seq_end][-10:],
-                    "new_item_id": itemid_list[ptr_seq_end],
+                    # "history_item_ids": itemid_list[start:ptr_seq_end][-10:],
+                    # "new_item_id": itemid_list[ptr_seq_end],
                     "new_item_timestamp": timestamp_list[ptr_seq_end],
                 }
 
@@ -512,11 +607,19 @@ def get_5core_ui_list(
         # Record this user's titles
         title_set.update(this_user_title_set)
 
+    # Title set is finalized.
+    unique_titles = list(title_set)
+    title_id_map = {title: index + 1 for index, title in enumerate(unique_titles)}
+
+    assign_itemid(train_list, title_id_map)
+    assign_itemid(valid_list, title_id_map)
+    assign_itemid(test_list, title_id_map)
+
     df_train = pd.DataFrame(train_list)
     df_valid = pd.DataFrame(valid_list)
     df_test = pd.DataFrame(test_list)
 
-    return df_train, df_valid, df_test, title_set
+    return df_train, df_valid, df_test, title_set, title_id_map
 
 
 def grain_dataset(categories: List[str]):
@@ -534,13 +637,12 @@ def grain_dataset(categories: List[str]):
         logger.info(f"Graining category {category} dataset...")
 
         logger.info(f"Loading {category} raw 5-core data...")
-        df_ui, pa_title_map, title_id_map = load_raw_data(category=category)
+        df_ui, pa_title_map, _ = load_raw_data(category=category)
 
         logger.info(f"Graining {category} data...")
-        df_train, df_valid, df_test, set_title = get_5core_ui_list(
+        df_train, df_valid, df_test, set_title, title_id_map = get_5core_ui_list(
             df_user_interact=df_ui,
             parentasin_title_map=pa_title_map,
-            title_itemid_map=title_id_map,
         )
 
         logger.info(f"Saving {category} train, valid and test .csv files...")
@@ -549,6 +651,7 @@ def grain_dataset(categories: List[str]):
         CSVLoader(category=category, phase='grained', usage='valid').store(obj=df_valid)
         CSVLoader(category=category, phase='grained', usage='test').store(obj=df_test)
         TxtLoader(category=category, phase='grained', usage='titles').store(obj=list(set_title))
+        JsonLoader(category=category, phase='downstream', usage='title2id').store(obj=title_id_map)
 
 
 def mix_dataset(categories: List[str]):
@@ -673,4 +776,4 @@ if __name__ == "__main__":
 
     grain_dataset(categories=pretrain_categories + outofdomain_categories)
     mix_dataset(categories=pretrain_categories)
-    upload_dataset(categories=pretrain_categories + outofdomain_categories)
+    # upload_dataset(categories=pretrain_categories + outofdomain_categories)

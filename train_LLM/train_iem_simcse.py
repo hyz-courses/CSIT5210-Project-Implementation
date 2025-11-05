@@ -233,7 +233,7 @@ class SimCSETrainSuite(TrainSuite):
             file_path=os.path.join(
                 PROJECT_ROOT_DIR, 
                 self.data_args.dataset_file_path), 
-            separator="ProductName: ")
+            separator="!@#$%^&*()")
 
         # Model
         self.model = LLM2Vec.from_pretrained(
