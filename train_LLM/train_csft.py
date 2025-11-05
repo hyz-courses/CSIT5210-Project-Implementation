@@ -28,6 +28,7 @@ from train_LLM.modules import TrainSuite
 from utils.logs import bind_logger
 
 THIS_FILE_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT_DIR = os.path.join(THIS_FILE_DIR, "..")
 
 logger = bind_logger(logger,
                      log_path=os.path.join(
@@ -57,8 +58,8 @@ class CSFTTrainSuite(TrainSuite):
 
         # Prior check if anything is missing
         _base_model_path = self.trainarg['base_model_path']
-        _train_data_path = self.trainarg['train_data_path']
-        _valid_data_path = self.trainarg['eval_data_path']
+        _train_data_path = os.path.join(PROJECT_ROOT_DIR, self.trainarg['train_data_path'])
+        _valid_data_path = os.path.join(PROJECT_ROOT_DIR, self.trainarg['eval_data_path'])
 
         logger.info(
             'Checking missing files...\n'
@@ -155,7 +156,7 @@ class CSFTTrainSuite(TrainSuite):
                 "gradient_accumulation_steps": gradient_accumulation_steps,
                 "num_train_epochs": int(self.trainarg["num_epochs"]),
                 "learning_rate": float(self.trainarg["learning_rate"]),
-                "output_dir": str(self.trainarg["output_dir"]),
+                "output_dir": str(os.path.join(PROJECT_ROOT_DIR, self.trainarg["output_dir"])),
             }
         )
 
@@ -231,7 +232,7 @@ class CSFTTrainSuite(TrainSuite):
             logger.error(message)
             raise ValueError(message)
         
-        output_dir = self.trainarg['output_dir']
+        output_dir = os.path.join(PROJECT_ROOT_DIR, self.trainarg['output_dir'])
         if not os.path.exists(output_dir):
             logger.info(
                 f'Output directory {output_dir} does not exist. Creating...')

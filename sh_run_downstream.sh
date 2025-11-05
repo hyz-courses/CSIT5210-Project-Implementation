@@ -1,0 +1,1 @@
+CUDA_VISIBLE_DEVICES=0 /home/$USER/llm2rec-venv/bin/python -m run_LLM.run_downstream

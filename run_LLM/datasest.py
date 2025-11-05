@@ -1,8 +1,9 @@
 import os
 import ast
 
-from typing import cast, List
+from typing import cast, List, Optional, Tuple
 
+import numpy as np
 import torch
 from torch.utils.data import Dataset
 
@@ -19,7 +20,7 @@ class IDRecDataset(Dataset):
         self.category = category
         self.max_len = max_len
         self.usage = usage
-        self.raw_data = self.load_data()
+        self.raw_data, self.max_item_id = self.load_data()
     
     def load_data(self):
         """
@@ -45,16 +46,25 @@ class IDRecDataset(Dataset):
         history_item_ids_list = df["history_item_ids"]
         new_item_id_list = df["new_item_id"]
 
-        sequences = [
-            cast(List, ast.literal_eval(history_item_ids)) + [new_item_id]
-            for history_item_ids, new_item_id in zip(
-                history_item_ids_list, new_item_id_list
-            )
-        ]
+        # Merge history item id list and new item id
+        # into a single list.
 
-        return sequences
+        sequences = []
+        max_item_id = -1
+
+        for (history_item_ids, new_item_id) in zip(
+            history_item_ids_list, new_item_id_list):
+
+            # Splice history and new into one seq
+            sequence = cast(List, ast.literal_eval(history_item_ids)) + [new_item_id]
+            sequences.append(sequence)
+
+            # This sequence max.
+            max_item_id = np.max([max_item_id, np.max(sequence)])
+
+        return sequences, max_item_id
     
-    def __add__(self, another_idrec_dataset: 'IDRecDataset') -> 'IDRecDataset':
+    def __add__(self, another_idrec_dataset: Optional['IDRecDataset']) -> 'IDRecDataset':
         """
         Concat the current dataset with another.
 
@@ -65,12 +75,18 @@ class IDRecDataset(Dataset):
             IDRecDataset: The concatenated dataset.
         """
 
+        if another_idrec_dataset is None:
+            return self
+
         assert (
             hasattr(another_idrec_dataset, "raw_data") and
             isinstance(another_idrec_dataset.raw_data, List)
         )
         
         self.raw_data += another_idrec_dataset.raw_data
+        self.max_item_id = max(
+            self.max_item_id, 
+            another_idrec_dataset.max_item_id)
         return self
 
     def __getitem__(self, index):
@@ -86,30 +102,35 @@ class IDRecDataset(Dataset):
             "seq_lengths": len(history_item_ids)
         }
 
+    def __len__(self):
+        return len(self.raw_data)
+
 
 class IDRecDatasets:
-    def __init__(self, categories: List[str]):
-        self.categories = categories
-        self.train_dataset, self.valid_dataset, self.test_dataset = self.load_data_allcat()
+    """
+    An train, valid and test item-id dataset
+    for a specific category.
+    """
     
-    def load_data_allcat(self):
-        train_dataset = None
-        valid_dataset = None
-        test_dataset = None
-        for category in self.categories:
-            if train_dataset is None:
-                train_dataset = IDRecDataset(category=category, max_len=10, usage="train")
-            else:
-                train_dataset += IDRecDataset(category=category, max_len=10, usage="train")
-
-            if valid_dataset is None:
-                valid_dataset = IDRecDataset(category=category, max_len=10, usage="valid")
-            else:
-                valid_dataset += IDRecDataset(category=category, max_len=10, usage="valid")
-
-            if test_dataset is None:
-                test_dataset = IDRecDataset(category=category, max_len=10, usage="test")
-            else:
-                test_dataset += IDRecDataset(category=category, max_len=10, usage="test")
+    def __init__(self, category: str):
+        self.category = category
     
-        return train_dataset, valid_dataset, test_dataset
+    def get_datasets(self) -> Tuple[
+        IDRecDataset, IDRecDataset, IDRecDataset,
+        int, List[int]
+    ]:
+        """
+        Load the train, valid and test ID datasets
+        for a specific category, along with some stats.
+        """
+
+        train_dataset = IDRecDataset(category=self.category, max_len=10, usage="train")
+        valid_dataset = IDRecDataset(category=self.category, max_len=10, usage="valid")
+        test_dataset = IDRecDataset(category=self.category, max_len=10, usage="test")
+
+        whole_dataset = train_dataset + valid_dataset + test_dataset
+        total_item_num = whole_dataset.max_item_id
+        select_pool = [1, total_item_num + 1]
+
+        return (train_dataset, valid_dataset, 
+                test_dataset, total_item_num, select_pool)
