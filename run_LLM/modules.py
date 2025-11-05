@@ -412,10 +412,6 @@ class Main:
         
         freeze_random(run_config.rand_seed)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-        wandb.init(
-            project=f"CSIT5210-Downstream-{which_downstream_model}",
-            name=run_config.run_id)
         
         self.accelerator = Accelerator(log_with="wandb")
 
@@ -475,6 +471,10 @@ class Main:
         ).exist():
             logger.info(f"Downstream eval results for category {self.category} exists, skip training.")
             return
+
+        wandb.init(
+            project=f"CSIT5210-Downstream-{self.which_downstream_model}",
+            name=self.run_config.run_id + f"-{self.category}")
 
         # Train downstream
         self.train_suite.train()
