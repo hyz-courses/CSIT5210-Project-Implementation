@@ -412,10 +412,6 @@ class Main:
         
         freeze_random(run_config.rand_seed)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-        wandb.init(
-            project=f"CSIT5210-Downstream-{which_downstream_model}",
-            name=run_config.run_id)
         
         self.accelerator = Accelerator(log_with="wandb")
 
@@ -429,7 +425,7 @@ class Main:
         self.run_config.item_num = total_item_num
 
         # Load embedding from .npy file
-        if self.run_config.use_pretrained_embedding:
+        if self.run_config.use_pretrained_embedding:   
             _pretrained_item_embeddings = NpyLoader(
                 category=category,
                 phase="downstream",
@@ -440,8 +436,9 @@ class Main:
                 _pretrained_item_embeddings, 
                 dtype=torch.float32).to(self.device)
         else:
-            pretrained_item_embeddings = None
-        
+            pretrained_item_embeddings = None 
+            print("No pretrained item embeddings used. ")
+            
         with self.accelerator.main_process_first():
             
             if "SASRec" in which_downstream_model:
@@ -478,6 +475,10 @@ class Main:
         ).exist():
             logger.info(f"Downstream eval results for category {self.category} exists, skip training.")
             return
+
+        wandb.init(
+            project=f"CSIT5210-Downstream-{self.which_downstream_model}",
+            name=self.run_config.run_id + f"-{self.category}")
 
         # Train downstream
         self.train_suite.train()
