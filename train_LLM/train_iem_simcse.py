@@ -7,7 +7,7 @@ SimCSE (Simple Contrastive Learning of Sentence Embeddings) training.
 
 @reference:
 
-https://github.com/HappyPointer/LLM2Rec/blob/main/llm2rec/dataset.py
+https://github.com/HappyPointer/LLM2Rec/blob/main
 
 @misc{gao2022simcsesimplecontrastivelearning,
       title={SimCSE: Simple Contrastive Learning of Sentence Embeddings}, 
@@ -32,7 +32,7 @@ from loguru import logger
 
 import torch
 from torch import Tensor
-from torch.utils.data import IterableDataset
+from torch.utils.data import Dataset
 from transformers import (
     TrainingArguments, set_seed, Trainer,
     PreTrainedTokenizerBase)
@@ -56,7 +56,7 @@ logger = bind_logger(logger,
                      ))
 
 
-class ItemTitleDataset(IterableDataset):
+class ItemTitleDataset(Dataset):
     """
     Dataset of lines of item titles.
     """
@@ -77,8 +77,7 @@ class ItemTitleDataset(IterableDataset):
             DataSample(
                 id_=i,
                 query= separator + line,
-                positive= separator + line,
-                task_name="AmazonMix")
+                positive= separator + line)
             for i, line in enumerate(self.raw_data)
         ]
 
@@ -126,7 +125,7 @@ class SentenceCollator:
         """
 
         num_texts = len(features[0].texts)
-        texts = [[]] * num_texts
+        texts = [[] for _ in range(num_texts)]
         labels = []
 
         for example in features:
@@ -171,7 +170,7 @@ class SimCSETrainer(Trainer):
         doc_neg = None if len(features) <= 2 else cast(Tensor, self.model(features[2]))
 
         # Need to bypass pylint due to non-proper writing in llm2vec source code.
-        loss = HardNegativeNLLLoss(scale=50.0)(
+        loss = HardNegativeNLLLoss(scale=10.0)(
             q_reps=query, d_reps_pos=doc_pos, d_reps_neg=doc_neg) #type: ignore
         
         if return_outputs:

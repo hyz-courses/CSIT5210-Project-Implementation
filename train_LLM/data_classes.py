@@ -64,8 +64,6 @@ class DataSample:
     query: str
     positive: str
     negative: Optional[str] = None
-    task_name: Optional[str] = None
-    aug_query: Optional[str] = None
 
 
 @dataclass(init=True)

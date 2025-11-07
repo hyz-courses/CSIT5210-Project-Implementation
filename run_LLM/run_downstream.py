@@ -16,16 +16,16 @@ if __name__ == "__main__":
     outofdomain_categories = ["Baby_Products", "Sports_and_Outdoors"]
 
     for cat in pretrain_categories + outofdomain_categories:
-        sasrec_runner = Main(run_config=run_config, category=cat, which_downstream_model="SASRec-abl")
-        sasrec_runner.main()
-
-        gru4rec_runner = Main(run_config=run_config, category=cat, which_downstream_model="GRU4Rec-abl")
-        gru4rec_runner.main()
-        
-        # sasrec_runner = Main(run_config=run_config, category=cat, which_downstream_model="SASRec")
+        # sasrec_runner = Main(run_config=run_config, category=cat, which_downstream_model="SASRec-abl")
         # sasrec_runner.main()
 
-        # gru4rec_runner = Main(run_config=run_config, category=cat, which_downstream_model="GRU4Rec")
+        # gru4rec_runner = Main(run_config=run_config, category=cat, which_downstream_model="GRU4Rec-abl")
         # gru4rec_runner.main()
+        
+        sasrec_runner = Main(run_config=run_config, category=cat, which_downstream_model="SASRec")
+        sasrec_runner.main()
+
+        gru4rec_runner = Main(run_config=run_config, category=cat, which_downstream_model="GRU4Rec")
+        gru4rec_runner.main()
         
         
