@@ -3,6 +3,12 @@ CSIT5210 - Data Mining and Knowledge Discovery
 @author: LI, Weijie | HUANG, Yanzhen
 @date: Oct. 10, 2025
 @description: Collaborative Supervised Fine-Tuning (CSFT) training suite.
+
+@reference:
+
+https://github.com/HappyPointer/LLM2Rec/blob/main
+
+(See full citation in README)
 """
 
 import os

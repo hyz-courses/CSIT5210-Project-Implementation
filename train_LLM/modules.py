@@ -6,7 +6,7 @@ CSIT5210 - Data Mining and Knowledge Discovery
 
 @reference:
 
-https://github.com/HappyPointer/LLM2Rec/blob/main/llm2rec/dataset.py
+https://github.com/HappyPointer/LLM2Rec/blob/main
 
 (See full citation in README)
 

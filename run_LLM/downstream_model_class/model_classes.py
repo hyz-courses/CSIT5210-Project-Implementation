@@ -1,9 +1,22 @@
-from typing import cast, Dict, Optional
+"""
+CSIT5210 - Data Mining and Knowledge Discovery
+@author: HUANG, Yanzhen | Deng Zhenxiao
+@date: Nov 6, 2025
+@description: Implementation of two downstream models:
+SASRec and GRU4Rec.
+
+@reference:
+
+https://github.com/HappyPointer/LLM2Rec/blob/main
+
+(See full citation in README)
+"""
+
+from typing import cast, Optional, Union
 from abc import abstractmethod
 
 import torch
 from torch import nn
-from torch.nn.modules.loss import _Loss
 from run_LLM.downstream_model_class.data_classes import (
     DownstreamModelArgs, 
     SASRecModelArgs, 
@@ -13,13 +26,11 @@ from run_LLM.downstream_model_class.data_classes import (
 from run_LLM.downstream_model_class.modules import TransformerEncoder
 
 
-LOSS_FN_MAP: Dict[str, _Loss] = {
-    "bce": nn.BCEWithLogitsLoss(),
-    "ce": nn.CrossEntropyLoss()
-}
-
-
-class MyEmbedding(nn.Module):
+class AdapterOnFrozenEmbedding(nn.Module):
+    """
+    A wrapper class that adds an adapter on top
+    of a frozen embedding.
+    """
 
     def __init__(self, adapter: nn.Module, embedding: nn.Embedding):
         super().__init__()
@@ -58,9 +69,13 @@ class DownstreamModel(nn.Module):
 
     @abstractmethod
     def _get_representation(self, batch: dict) -> torch.Tensor:
-        ...
+        """
+        An abstract method realized in each inheritance model class.
+        Defines how a model adapts the frozen embedding to the 
+        downstream task.
+        """
 
-    def load_item_emb(self, pretrained_embs: torch.Tensor) -> MyEmbedding:
+    def load_item_emb(self, pretrained_embs: Optional[torch.Tensor]) -> Union[AdapterOnFrozenEmbedding, nn.Embedding]:
         """
         Attempt to load pretrained item embeddings.
         If no pretrained item embeddings provided,
@@ -111,7 +126,7 @@ class DownstreamModel(nn.Module):
             elif "bias" in name:
                 nn.init.constant_(param, 0)
         
-        item_emb_ = MyEmbedding(adapter=item_emb_adapter, embedding=item_emb)
+        item_emb_ = AdapterOnFrozenEmbedding(adapter=item_emb_adapter, embedding=item_emb)
         return item_emb_
     
     def forward(self, batch: dict):
@@ -132,11 +147,17 @@ class DownstreamModel(nn.Module):
         """
         Base on the given sequence, predict the next item.
         """
+
+        # All items
         reps = self._get_representation(batch).view(-1, self.model_config.hidden_size)
         test_item_emb = self.item_embeddings.weight
+
+        # Item representation similarity
+        # with each stored item embedding.
+        # Dot-similarity. Unnorm.
         logits = torch.matmul(reps, test_item_emb.transpose(0, 1))
 
-        # Select
+        # Select topk and get ID.
         s_from, s_to = self.run_config.select_pool
         scores = logits[:, s_from:s_to]
         preds = scores.topk(n_return_sequences, dim=-1).indices + s_from
@@ -150,11 +171,13 @@ class SASRec(DownstreamModel):
     
     def __init__(self, model_config: SASRecModelArgs, 
                  run_config: DownstreamTrainArgs,
-                 pretrained_item_embeddings: torch.Tensor =None):
+                 pretrained_item_embeddings: Optional[torch.Tensor] = None):
         super(SASRec, self).__init__(
             model_config=model_config,
             run_config=run_config,
             pretrained_item_embeddings=pretrained_item_embeddings)
+        
+        self.model_config = cast(SASRecModelArgs, model_config)
         
         assert self.model_config.adapter_dims[-1] == -1
 
@@ -201,11 +224,13 @@ class GRU4Rec(DownstreamModel):
 
     def __init__(self, model_config: GRU4RecModelArgs, 
                  run_config: DownstreamTrainArgs,
-                 pretrained_item_embeddings: torch.Tensor =None):
+                 pretrained_item_embeddings: Optional[torch.Tensor] = None):
         super(GRU4Rec, self).__init__(
             model_config=model_config,
             run_config=run_config,
             pretrained_item_embeddings=pretrained_item_embeddings)
+        
+        self.model_config = cast(GRU4RecModelArgs, model_config)
         
         self.gru = nn.GRU(
             input_size=self.model_config.hidden_size,

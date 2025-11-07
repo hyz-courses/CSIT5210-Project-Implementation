@@ -1,3 +1,18 @@
+"""
+CSIT5210 - Data Mining and Knowledge Discovery
+@author: HUANG, Yanzhen | Deng Zhenxiao
+@date: Nov 6, 2025
+@description: Training and model configurations for downstream model.
+
+Parameters adhere to the original implementation.
+
+@reference:
+
+https://github.com/HappyPointer/LLM2Rec/blob/main
+
+(See full citation in README)
+"""
+
 from typing import List
 from dataclasses import dataclass, field
 
@@ -12,7 +27,8 @@ class DownstreamTrainArgs:
     cache_dir: str = "run_LLM/cache/"
     ckpt_dir: str = "output/downstream/ckpt/"
     rand_seed: int = 2024
-
+    use_pretrained_embedding: bool = True
+    
     max_seq_length: int = 10
     whiten: bool = False
 
@@ -21,7 +37,7 @@ class DownstreamTrainArgs:
     lr: float = 1e-3
     weight_decay: float = 1e-4
     warmup_steps: int = 10_000
-    epochs: int = 1000
+    epochs: int = 500
 
     max_grad_norm: float = 1.0
     eval_interval: int = 5
