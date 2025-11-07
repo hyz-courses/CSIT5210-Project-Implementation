@@ -7,7 +7,7 @@ SimCSE (Simple Contrastive Learning of Sentence Embeddings) training.
 
 @reference:
 
-https://github.com/HappyPointer/LLM2Rec/blob/main/llm2rec/dataset.py
+https://github.com/HappyPointer/LLM2Rec/blob/main
 
 @misc{gao2022simcsesimplecontrastivelearning,
       title={SimCSE: Simple Contrastive Learning of Sentence Embeddings}, 

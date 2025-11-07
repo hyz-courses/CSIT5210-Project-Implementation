@@ -1,3 +1,18 @@
+"""
+CSIT5210 - Data Mining and Knowledge Discovery
+@author: HUANG, Yanzhen | Deng Zhenxiao
+@date: Nov 6, 2025
+@description: Key components for implementing the
+downstream models. They adheres to the original 
+implementation of the source code for consistence.
+
+@reference:
+
+https://github.com/HappyPointer/LLM2Rec/blob/main
+
+(See full citation in README)
+"""
+
 import math
 from typing import cast, List
 
