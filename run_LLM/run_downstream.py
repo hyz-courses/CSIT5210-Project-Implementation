@@ -1,3 +1,15 @@
+"""
+CSIT5210 - Data Mining and Knowledge Discovery
+@author: HUANG, Yanzhen | Deng Zhenxiao
+@date: Nov 6, 2025
+@description: Downstream running.
+@reference:
+
+https://github.com/HappyPointer/LLM2Rec/blob/main
+
+(See full citation in README)
+"""
+
 from run_LLM.modules import Main
 from run_LLM.downstream_model_class.data_classes import DownstreamTrainArgs
 

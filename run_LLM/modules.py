@@ -1,3 +1,18 @@
+"""
+CSIT5210 - Data Mining and Knowledge Discovery
+@author: HUANG, Yanzhen | Deng Zhenxiao
+@date: Nov 6, 2025
+@description: Evaluator, DownstreamTrainSuite, and 
+the final Main running class. The Evaluator takes 
+reference from the original paper's implementation.
+
+@reference:
+
+https://github.com/HappyPointer/LLM2Rec/blob/main
+
+(See full citation in README)
+"""
+
 import os
 import math
 import hashlib
@@ -7,8 +22,8 @@ from typing import cast, Dict
 from collections import defaultdict, OrderedDict
 from dataclasses import asdict
 
-import torch
 import wandb
+import torch
 from tqdm import tqdm
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
@@ -41,7 +56,8 @@ logger = bind_logger(_logger,
 
 class Evaluator:
     """
-    An evaluator class.
+    An evaluator class. Takes reference from the
+    original paper's implementation.
     """
     
     def __init__(self, evaluator_config: DownstreamTrainArgs):
