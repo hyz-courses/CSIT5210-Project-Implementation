@@ -1,3 +1,18 @@
+"""
+CSIT5210 - Data Mining and Knowledge Discovery
+@author: HUANG, Yanzhen | Deng Zhenxiao
+@date: Nov 6, 2025
+@description: Encoder class LLM2Vec. LLM2Vec takes
+reference from the original paper's implementation.
+See their implementation in the @reference section.
+
+@reference:
+
+https://github.com/HappyPointer/LLM2Rec/blob/main
+
+(See full citation in README)
+"""
+
 import os
 import json
 from typing import (
@@ -247,7 +262,6 @@ class LLM2Vec(torch.nn.Module):
                 and all([isinstance(x, int) for x in text]))):
             return len(text)
 
-        # TODO: Stat model output and seek for a better solution.
         return sum([len(t) for t in text])
         
 

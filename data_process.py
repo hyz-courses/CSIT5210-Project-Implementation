@@ -11,7 +11,7 @@ import ast
 import json
 import math
 from collections import OrderedDict
-from typing import List, Callable, TypeVar, Generic, Tuple, Optional, DefaultDict
+from typing import List, Dict, Callable, TypeVar, Generic, Tuple, Optional, DefaultDict
 from abc import ABC, abstractmethod
 from datasets import Dataset, DatasetDict
 
@@ -453,7 +453,7 @@ def load_raw_data(category: str):
 
 def get_5core_ui_list(
     df_user_interact: pd.DataFrame, parentasin_title_map: dict
-) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, set]:
+) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, set, Dict[str, int]]:
     """
     Using the raw dataset, build up a list of leave-one-out
     user interactions. The items are represented by:
