@@ -92,7 +92,7 @@ huggingface-cli download Qwen/Qwen2-0.5B \
   --local-dir-use-symlinks False
 ```
 
-Replace the Qwen2-0.5B model path (`base_model_or_path`) in the [CSFT train arguments](configs/csft_trainargs.json).
+Replace the Qwen2-0.5B model path (`base_model_path`) in the [CSFT train arguments](configs/csft_trainargs.json).
 
 ## 1. Run
 
